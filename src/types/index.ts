@@ -6,6 +6,7 @@ export interface User {
   email: string;
   role: Role;
   avatar_url?: string | null;
+  password?: string; // mock-only
 }
 
 export interface Client {
