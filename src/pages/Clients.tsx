@@ -9,32 +9,66 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import type { Client } from "@/types";
+import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
+import { useSearch } from "@/context/SearchContext";
 
 export default function Clients() {
   const { clients, tasks, currentUser, createClient } = useApp();
+  const { query } = useSearch();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Client | null>(null);
   const [form, setForm] = useState<Partial<Client>>({ name: "", company: "", email: "" });
+  const [period, setPeriod] = useState<Period>({ preset: "all" });
 
   const visible = useMemo(() => {
-    if (currentUser.role === "leader") return clients;
-    const myClientIds = new Set(tasks.filter(t => t.assignee_id === currentUser.id).map(t => t.client_id).filter(Boolean));
-    return clients.filter(c => myClientIds.has(c.id));
-  }, [clients, tasks, currentUser]);
+    let list = currentUser.role === "leader"
+      ? clients
+      : (() => {
+          const myClientIds = new Set(tasks.filter(t => t.assignee_id === currentUser.id).map(t => t.client_id).filter(Boolean));
+          return clients.filter(c => myClientIds.has(c.id));
+        })();
+
+    // Período: cliente criado no período OU com tarefas atualizadas no período
+    if (period.preset !== "all") {
+      list = list.filter(c =>
+        inPeriod(c.created_at, period) ||
+        tasks.some(t => t.client_id === c.id && (inPeriod(t.updated_at, period) || inPeriod(t.created_at, period)))
+      );
+    }
+
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        (c.company ?? "").toLowerCase().includes(q) ||
+        (c.email ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [clients, tasks, currentUser, period, query]);
+
+  function tasksInPeriodFor(clientId: string) {
+    const all = tasks.filter(t => t.client_id === clientId);
+    if (period.preset === "all") return all;
+    return all.filter(t => inPeriod(t.created_at, period) || inPeriod(t.updated_at, period));
+  }
 
   return (
     <div className="max-w-7xl mx-auto">
       <PageHeader
         title="Clientes"
         subtitle={`${visible.length} cliente${visible.length === 1 ? "" : "s"} ${currentUser.role === "leader" ? "ativos" : "vinculados a você"}`}
-        actions={currentUser.role === "leader" && (
-          <Button onClick={() => setOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo cliente</Button>
-        )}
+        actions={
+          <>
+            <PeriodFilter value={period} onChange={setPeriod} />
+            <Button onClick={() => setOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo cliente</Button>
+          </>
+        }
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {visible.map(c => {
-          const t = tasks.filter(x => x.client_id === c.id);
+          const t = tasksInPeriodFor(c.id);
           const done = t.filter(x => x.status === "done").length;
           const inProg = t.filter(x => x.status === "in_progress").length;
           const late = t.filter(x => x.due_date && new Date(x.due_date) < new Date() && x.status !== "done").length;
@@ -61,10 +95,13 @@ export default function Clients() {
               <div className="h-1.5 rounded-full bg-muted overflow-hidden mb-2">
                 <div className="h-full gradient-primary transition-all" style={{ width: `${pct}%` }} />
               </div>
-              <p className="text-xs text-muted-foreground">{pct}% concluído</p>
+              <p className="text-xs text-muted-foreground">{pct}% concluído no período</p>
             </Card>
           );
         })}
+        {visible.length === 0 && (
+          <Card className="p-10 text-center text-muted-foreground col-span-full">Nenhum cliente para os filtros aplicados.</Card>
+        )}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
