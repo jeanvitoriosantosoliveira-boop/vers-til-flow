@@ -15,7 +15,7 @@ interface Props {
 export function Column({ status, title, tasks, onTaskClick, onAdd, accent }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
-    <div className="flex flex-col bg-muted/30 rounded-xl p-3 min-w-[280px] w-[280px] shrink-0">
+    <div className="flex flex-col bg-muted/70 dark:bg-muted/40 border border-border/60 rounded-xl p-3 min-w-[280px] w-[280px] shrink-0 shadow-sm">
       <div className="flex items-center justify-between px-1.5 mb-3">
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${accent}`} />
