@@ -9,11 +9,36 @@ export const mockUsers: User[] = [
 ];
 
 export const mockClients: Client[] = [
-  { id: "c1", name: "Aurora Cosméticos", company: "Aurora SA", email: "contato@aurora.com", status: "active", created_at: new Date().toISOString() },
-  { id: "c2", name: "TechNova", company: "TechNova LTDA", email: "marketing@technova.io", status: "active", created_at: new Date().toISOString() },
-  { id: "c3", name: "Verde Bistrô", company: "Verde Bistrô", email: "ola@verdebistro.com", status: "active", created_at: new Date().toISOString() },
-  { id: "c4", name: "Studio Pilates", company: "Studio Pilates Zen", email: "contato@studiopilates.com", status: "paused", created_at: new Date().toISOString() },
-  { id: "c5", name: "Construtora Horizonte", company: "Horizonte SA", email: "marketing@horizonte.com", status: "active", created_at: new Date().toISOString() },
+  { id: "c1", name: "Aurora Cosméticos", company: "Aurora SA", email: "contato@aurora.com", phone: "(11) 98888-1010",
+    segment: "Beleza & Cosméticos", monthly_fee: 8500, contract_start: "2024-03-01",
+    monthly_hours_target: 60, satisfaction: 4.6, health: "great",
+    services: ["Social Media","Tráfego Pago","Produção de Conteúdo","Influenciadores"],
+    notes: "Cliente âncora. Reuniões semanais às quintas.",
+    status: "active", created_at: new Date().toISOString() },
+  { id: "c2", name: "TechNova", company: "TechNova LTDA", email: "marketing@technova.io", phone: "(11) 99777-2020",
+    segment: "SaaS B2B", monthly_fee: 12000, contract_start: "2023-11-15",
+    monthly_hours_target: 80, satisfaction: 4.2, health: "good",
+    services: ["SEO","Inbound","E-mail Marketing","Google Ads","Analytics"],
+    notes: "Foco em geração de MQLs. KPI principal: CPL.",
+    status: "active", created_at: new Date().toISOString() },
+  { id: "c3", name: "Verde Bistrô", company: "Verde Bistrô", email: "ola@verdebistro.com", phone: "(11) 97666-3030",
+    segment: "Gastronomia", monthly_fee: 3500, contract_start: "2025-01-10",
+    monthly_hours_target: 25, satisfaction: 4.8, health: "great",
+    services: ["Social Media","Fotografia"],
+    notes: "Adoram resultados orgânicos.",
+    status: "active", created_at: new Date().toISOString() },
+  { id: "c4", name: "Studio Pilates", company: "Studio Pilates Zen", email: "contato@studiopilates.com", phone: "(11) 96555-4040",
+    segment: "Saúde & Bem-estar", monthly_fee: 2200, contract_start: "2024-08-20",
+    monthly_hours_target: 18, satisfaction: 3.2, health: "warning",
+    services: ["Social Media","Branding"],
+    notes: "Em rebranding. Atenção à comunicação visual.",
+    status: "paused", created_at: new Date().toISOString() },
+  { id: "c5", name: "Construtora Horizonte", company: "Horizonte SA", email: "marketing@horizonte.com", phone: "(11) 95444-5050",
+    segment: "Construção Civil", monthly_fee: 9800, contract_start: "2024-06-01",
+    monthly_hours_target: 70, satisfaction: 2.8, health: "risk",
+    services: ["Site & Landing Pages","Tráfego Pago","Vídeo","CRM"],
+    notes: "Cliente exigente — revisar entregas com cuidado extra.",
+    status: "active", created_at: new Date().toISOString() },
 ];
 
 const now = Date.now();
@@ -46,4 +71,15 @@ export const mockComments: Comment[] = [
   { id: "cm2", task_id: "t2", user_id: "u4", body: "Ajustei lances. Aguardando 48h de dados.", created_at: day(0) },
 ];
 
-export const mockTimeEntries: TimeEntry[] = [];
+const td = (n: number) => new Date(now - n * 86400000).toISOString();
+export const mockTimeEntries: TimeEntry[] = [
+  { id: "te1", task_id: "t1",  user_id: "u2", seconds: 5400,  description: "Pesquisa de pilares e referências",       logged_at: td(2), created_at: td(2) },
+  { id: "te2", task_id: "t2",  user_id: "u4", seconds: 7200,  description: "Ajuste de lances e segmentação",          logged_at: td(1), created_at: td(1) },
+  { id: "te3", task_id: "t2",  user_id: "u4", seconds: 5400,  description: "Análise de relatório de palavras-chave",  logged_at: td(0), created_at: td(0) },
+  { id: "te4", task_id: "t3",  user_id: "u3", seconds: 3200,  description: "Roteirização e revisão",                  logged_at: td(1), created_at: td(1) },
+  { id: "te5", task_id: "t7",  user_id: "u3", seconds: 7200,  description: "Edição cases 1 e 2",                      logged_at: td(0), created_at: td(0) },
+  { id: "te6", task_id: "t8",  user_id: "u4", seconds: 9000,  description: "Montagem do dashboard + insights",        logged_at: td(3), created_at: td(3) },
+  { id: "te7", task_id: "t10", user_id: "u3", seconds: 1800,  description: "Briefing dos artigos",                    logged_at: td(0), created_at: td(0) },
+  { id: "te8", task_id: "t16", user_id: "u4", seconds: 5200,  description: "Setup automação RD Station",              logged_at: td(2), created_at: td(2) },
+  { id: "te9", task_id: "t17", user_id: "u5", seconds: 2800,  description: "Mapeamento de 3 concorrentes",            logged_at: td(1), created_at: td(1) },
+];
