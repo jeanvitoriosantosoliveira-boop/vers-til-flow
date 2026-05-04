@@ -27,8 +27,8 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Esconder a busca no Dashboard
-  const showSearch = location.pathname !== "/";
+  // Mostrar busca apenas onde faz sentido (Kanban e Clientes)
+  const showSearch = location.pathname === "/kanban" || location.pathname === "/clients";
 
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" && query.trim()) navigate("/kanban");
