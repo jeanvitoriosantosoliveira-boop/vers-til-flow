@@ -14,6 +14,15 @@ export interface Client {
   name: string;
   company?: string | null;
   email?: string | null;
+  phone?: string | null;
+  segment?: string | null;            // setor/segmento
+  monthly_fee?: number;               // mensalidade (R$)
+  contract_start?: string | null;
+  monthly_hours_target?: number;      // meta de horas/mês para esse cliente
+  satisfaction?: number;              // 0..5
+  health?: "great" | "good" | "warning" | "risk";
+  services?: string[];                // ex: ["SEO","Tráfego pago","Conteúdo"]
+  notes?: string | null;
   status: "active" | "paused" | "archived";
   created_at: string;
 }
@@ -39,9 +48,10 @@ export interface TimeEntry {
   id: string;
   task_id: string;
   user_id: string;
-  started_at: string;
-  ended_at?: string | null;
   seconds: number;
+  description?: string | null;
+  logged_at: string;       // data do trabalho
+  created_at: string;      // data do registro
 }
 
 export interface Comment {
