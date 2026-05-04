@@ -15,15 +15,15 @@ interface AppState {
   tasks: Task[];
   comments: Comment[];
   timeEntries: TimeEntry[];
-  activeTimer: { taskId: string; startedAt: number } | null;
   createTask: (t: Partial<Task>) => Promise<void>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   moveTask: (id: string, status: TaskStatus) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   createClient: (c: Partial<Client>) => Promise<void>;
+  updateClient: (id: string, patch: Partial<Client>) => Promise<void>;
   addComment: (taskId: string, body: string) => Promise<void>;
-  startTimer: (taskId: string) => void;
-  stopTimer: () => void;
+  logTime: (input: { task_id: string; seconds: number; description?: string; logged_at?: string }) => Promise<void>;
+  deleteTimeEntry: (id: string) => Promise<void>;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -39,7 +39,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
   const [comments, setComments] = useState<Comment[]>(mockComments);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(mockTimeEntries);
-  const [activeTimer, setActiveTimer] = useState<AppState["activeTimer"]>(null);
   const [usingBackend, setUsingBackend] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -130,6 +129,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       name: data.name ?? "Novo cliente",
       company: data.company ?? null,
       email: data.email ?? null,
+      phone: data.phone ?? null,
+      segment: data.segment ?? null,
+      monthly_fee: data.monthly_fee ?? 0,
+      contract_start: data.contract_start ?? new Date().toISOString().slice(0,10),
+      monthly_hours_target: data.monthly_hours_target ?? 40,
+      satisfaction: data.satisfaction ?? 4,
+      health: data.health ?? "good",
+      services: data.services ?? [],
+      notes: data.notes ?? null,
       status: data.status ?? "active",
       created_at: new Date().toISOString(),
     };
@@ -139,31 +147,42 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     toast.success("Cliente criado", { description: c.name });
   }, [usingBackend, pushNotif]);
 
+  const updateClient = useCallback(async (id: string, patch: Partial<Client>) => {
+    setClients((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
+    if (usingBackend && supabase) await supabase.from("clients").update(patch).eq("id", id);
+  }, [usingBackend]);
+
   const addComment = useCallback(async (taskId: string, body: string) => {
     const c: Comment = { id: uid(), task_id: taskId, user_id: currentUser.id, body, created_at: new Date().toISOString() };
     setComments((prev) => [...prev, c]);
     if (usingBackend && supabase) await supabase.from("comments").insert(c);
   }, [currentUser, usingBackend]);
 
-  const startTimer = useCallback((taskId: string) => setActiveTimer({ taskId, startedAt: Date.now() }), []);
-
-  const stopTimer = useCallback(() => {
-    if (!activeTimer) return;
-    const seconds = Math.round((Date.now() - activeTimer.startedAt) / 1000);
+  const logTime = useCallback(async ({ task_id, seconds, description, logged_at }: { task_id: string; seconds: number; description?: string; logged_at?: string }) => {
+    if (seconds <= 0) return;
     const entry: TimeEntry = {
-      id: uid(), task_id: activeTimer.taskId, user_id: currentUser.id,
-      started_at: new Date(activeTimer.startedAt).toISOString(),
-      ended_at: new Date().toISOString(), seconds,
+      id: uid(), task_id, user_id: currentUser.id, seconds,
+      description: description ?? null,
+      logged_at: logged_at ?? new Date().toISOString(),
+      created_at: new Date().toISOString(),
     };
-    setTimeEntries((prev) => [...prev, entry]);
-    setTasks((prev) => prev.map((t) => t.id === activeTimer.taskId ? { ...t, total_seconds: t.total_seconds + seconds } : t));
-    if (usingBackend && supabase) supabase.from("time_entries").insert(entry);
-    setActiveTimer(null);
-  }, [activeTimer, currentUser, usingBackend]);
+    setTimeEntries((prev) => [entry, ...prev]);
+    setTasks((prev) => prev.map((t) => t.id === task_id ? { ...t, total_seconds: t.total_seconds + seconds } : t));
+    if (usingBackend && supabase) await supabase.from("time_entries").insert(entry);
+    toast.success("Horas lançadas", { description: `${(seconds/3600).toFixed(2)}h registradas` });
+  }, [currentUser, usingBackend]);
+
+  const deleteTimeEntry = useCallback(async (id: string) => {
+    const entry = timeEntries.find(t => t.id === id);
+    if (!entry) return;
+    setTimeEntries((prev) => prev.filter(t => t.id !== id));
+    setTasks((prev) => prev.map((t) => t.id === entry.task_id ? { ...t, total_seconds: Math.max(0, t.total_seconds - entry.seconds) } : t));
+    if (usingBackend && supabase) await supabase.from("time_entries").delete().eq("id", id);
+  }, [timeEntries, usingBackend]);
 
   const value: AppState = {
-    ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries, activeTimer,
-    createTask, updateTask, moveTask, deleteTask, createClient, addComment, startTimer, stopTimer,
+    ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
+    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, addComment, logTime, deleteTimeEntry,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

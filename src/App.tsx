@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import Kanban from "./pages/Kanban";
 import Reports from "./pages/Reports";
 import Clients from "./pages/Clients";
+import ClientDetail from "./pages/ClientDetail";
 import Team from "./pages/Team";
 import TimeTracking from "./pages/TimeTracking";
 import Login from "./pages/Login";
@@ -46,6 +47,7 @@ const App = () => (
                       <Route path="/kanban" element={<Kanban />} />
                       <Route path="/reports" element={<Reports />} />
                       <Route path="/clients" element={<Clients />} />
+                      <Route path="/clients/:id" element={<ClientDetail />} />
                       <Route path="/team" element={<Team />} />
                       <Route path="/time" element={<TimeTracking />} />
                     </Route>

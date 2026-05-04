@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useApp } from "@/store/AppStore";
 import type { Task, TaskPriority, TaskStatus } from "@/types";
-import { Trash2, Send, Play, Square } from "lucide-react";
-import { formatSeconds } from "@/lib/format";
+import { Trash2, Send, Plus, Clock, Trash } from "lucide-react";
+import { formatSeconds, formatDate } from "@/lib/format";
 
 interface Props {
   open: boolean;
@@ -18,10 +18,14 @@ interface Props {
 }
 
 export function TaskDialog({ open, onOpenChange, taskId, defaultStatus }: Props) {
-  const { tasks, clients, users, comments, currentUser, createTask, updateTask, deleteTask, addComment, startTimer, stopTimer, activeTimer } = useApp();
+  const { tasks, clients, users, comments, timeEntries, currentUser, createTask, updateTask, deleteTask, addComment, logTime, deleteTimeEntry } = useApp();
   const editing = tasks.find(t => t.id === taskId);
   const [form, setForm] = useState<Partial<Task>>({});
   const [comment, setComment] = useState("");
+  const [hoursStr, setHoursStr] = useState("");
+  const [minutesStr, setMinutesStr] = useState("");
+  const [logDesc, setLogDesc] = useState("");
+  const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     if (editing) setForm(editing);
@@ -29,13 +33,26 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus }: Props)
   }, [editing, defaultStatus, currentUser.id, open]);
 
   const taskComments = editing ? comments.filter(c => c.task_id === editing.id) : [];
-  const isTiming = activeTimer?.taskId === editing?.id;
+  const taskLogs = useMemo(
+    () => editing ? timeEntries.filter(t => t.task_id === editing.id).sort((a,b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime()) : [],
+    [timeEntries, editing]
+  );
 
   async function save() {
     if (!form.title?.trim()) return;
     if (editing) await updateTask(editing.id, form);
     else await createTask(form);
     onOpenChange(false);
+  }
+
+  async function submitTimeLog() {
+    if (!editing) return;
+    const h = parseFloat(hoursStr || "0") || 0;
+    const m = parseFloat(minutesStr || "0") || 0;
+    const seconds = Math.round(h * 3600 + m * 60);
+    if (seconds <= 0) return;
+    await logTime({ task_id: editing.id, seconds, description: logDesc.trim() || undefined, logged_at: new Date(logDate).toISOString() });
+    setHoursStr(""); setMinutesStr(""); setLogDesc("");
   }
 
   return (
@@ -106,16 +123,55 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus }: Props)
           </div>
 
           {editing && (
-            <div className="border-t border-border pt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Tempo registrado</p>
-                  <p className="font-display text-lg font-semibold tabular-nums">{formatSeconds(editing.total_seconds)}</p>
+            <div className="border-t border-border pt-4 space-y-4">
+              <div className="rounded-xl border border-border bg-muted/30 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-accent" />
+                    <p className="text-sm font-semibold">Lançamento de horas</p>
+                  </div>
+                  <p className="font-display text-lg font-bold tabular-nums">{formatSeconds(editing.total_seconds)}</p>
                 </div>
-                {isTiming ? (
-                  <Button onClick={stopTimer} variant="destructive" size="sm" className="gap-2"><Square className="w-3 h-3" /> Parar</Button>
-                ) : (
-                  <Button onClick={() => startTimer(editing.id)} size="sm" className="gap-2"><Play className="w-3 h-3" /> Iniciar</Button>
+                <div className="grid grid-cols-12 gap-2 mb-2">
+                  <div className="col-span-2">
+                    <Label className="text-[10px] uppercase">Horas</Label>
+                    <Input type="number" min="0" step="1" value={hoursStr} onChange={(e) => setHoursStr(e.target.value)} placeholder="0" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-[10px] uppercase">Min</Label>
+                    <Input type="number" min="0" max="59" step="5" value={minutesStr} onChange={(e) => setMinutesStr(e.target.value)} placeholder="0" />
+                  </div>
+                  <div className="col-span-3">
+                    <Label className="text-[10px] uppercase">Data</Label>
+                    <Input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} />
+                  </div>
+                  <div className="col-span-5">
+                    <Label className="text-[10px] uppercase">O que foi feito</Label>
+                    <Input value={logDesc} onChange={(e) => setLogDesc(e.target.value)} placeholder="Ex: edição do vídeo case 1" />
+                  </div>
+                </div>
+                <Button size="sm" onClick={submitTimeLog} className="w-full gap-2"><Plus className="w-3 h-3" /> Lançar horas</Button>
+
+                {taskLogs.length > 0 && (
+                  <div className="mt-4 space-y-1.5 max-h-40 overflow-y-auto">
+                    {taskLogs.map(l => {
+                      const u = users.find(x => x.id === l.user_id);
+                      const canDelete = currentUser.role === "leader" || l.user_id === currentUser.id;
+                      return (
+                        <div key={l.id} className="flex items-center gap-3 text-xs p-2 rounded-md bg-background/60 border border-border/60">
+                          <span className="font-display font-bold tabular-nums text-accent w-16">{formatSeconds(l.seconds)}</span>
+                          <span className="flex-1 truncate">{l.description || <em className="text-muted-foreground">sem descrição</em>}</span>
+                          <span className="text-muted-foreground tabular-nums">{formatDate(l.logged_at)}</span>
+                          <span className="text-muted-foreground hidden sm:inline">· {u?.name.split(" ")[0]}</span>
+                          {canDelete && (
+                            <button onClick={() => deleteTimeEntry(l.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <Trash className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
