@@ -106,9 +106,10 @@ create table if not exists public.time_entries (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.tasks(id) on delete cascade,
   user_id uuid not null references public.users(id) on delete cascade,
-  started_at timestamptz not null,
-  ended_at timestamptz,
-  seconds integer not null default 0
+  seconds integer not null default 0,
+  description text,
+  logged_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
 );
 
 -- ============== NOTIFICATIONS ========================================
