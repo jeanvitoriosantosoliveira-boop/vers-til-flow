@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileDown, Search, FileSpreadsheet, Users as UsersIcon, ListTodo, Building } from "lucide-react";
+import { FileDown, Search, FileSpreadsheet, Users as UsersIcon, ListTodo, Building, Wallet, ArrowUpRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { formatSeconds, formatDate } from "@/lib/format";
 import { exportReportPdf } from "@/lib/exportPdf";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
@@ -17,6 +18,7 @@ const statusLabel: Record<string,string> = { todo:"A Fazer", in_progress:"Em and
 
 export default function Reports() {
   const { clients, tasks, users, timeEntries, currentUser } = useApp();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("clients");
   const [period, setPeriod] = useState<Period>({ preset: "month" });
   const [q, setQ] = useState("");
@@ -130,6 +132,28 @@ export default function Reports() {
           </>
         }
       />
+
+      {/* Cards de relatórios — clique abre tela detalhada */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {[
+          { id: "clients",   title: "Clientes",   subtitle: `${clients.length} cliente(s)`,                           icon: Building,   color: "text-primary" },
+          { id: "tasks",     title: "Tarefas",    subtitle: `${tasks.length} tarefa(s) no total`,                     icon: ListTodo,   color: "text-accent" },
+          ...(isLeader ? [{ id: "team",      title: "Equipe",     subtitle: `${users.filter(u => u.role==="employee").length} funcionário(s)`, icon: UsersIcon, color: "text-warning" }] : []),
+          ...(isLeader ? [{ id: "financial", title: "Financeiro", subtitle: "Receitas, despesas e folha",            icon: Wallet,    color: "text-success" }] : []),
+        ].map(card => {
+          const Icon = card.icon;
+          return (
+            <Card key={card.id} onClick={() => navigate(`/reports/${card.id}`)} className="p-5 cursor-pointer hover:shadow-lift hover:-translate-y-0.5 hover:border-accent/40 transition-all group">
+              <div className="flex items-start justify-between mb-4">
+                <div className={`w-10 h-10 rounded-lg bg-muted flex items-center justify-center ${card.color}`}><Icon className="w-5 h-5" /></div>
+                <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-accent transition-colors" />
+              </div>
+              <h3 className="font-display font-semibold">{card.title}</h3>
+              <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
+            </Card>
+          );
+        })}
+      </div>
 
       <Card className="p-2 mb-6 flex flex-col md:flex-row md:items-center gap-2">
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
