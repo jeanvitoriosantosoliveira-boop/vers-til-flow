@@ -6,28 +6,34 @@ import { Column } from "@/components/kanban/Column";
 import { TaskDialog } from "@/components/kanban/TaskDialog";
 import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
-import type { TaskStatus } from "@/types";
+import type { KanbanColumn, Task, TaskStatus } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSearch } from "@/context/SearchContext";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
-const COLUMNS: { status: TaskStatus; title: string; accent: string }[] = [
-  { status: "todo", title: "A Fazer", accent: "bg-muted-foreground" },
-  { status: "in_progress", title: "Em Andamento", accent: "bg-primary" },
-  { status: "review", title: "Em Revisão", accent: "bg-warning" },
-  { status: "done", title: "Concluído", accent: "bg-success" },
-];
+function columnOf(task: Task): string {
+  return task.column_id || task.status;
+}
 
 export default function Kanban() {
-  const { tasks, clients, users, currentUser, moveTask } = useApp();
+  const { tasks, clients, users, currentUser, moveTask, columns, createColumn, renameColumn, deleteColumn } = useApp();
   const { query, setQuery } = useSearch();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [defaultStatus, setDefaultStatus] = useState<TaskStatus>("todo");
+  const [defaultColumnId, setDefaultColumnId] = useState<string | null>(null);
   const [filterClient, setFilterClient] = useState<string>("all");
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
   const [period, setPeriod] = useState<Period>({ preset: "all" });
+  const [newColOpen, setNewColOpen] = useState(false);
+  const [newColTitle, setNewColTitle] = useState("");
+
+  const isLeader = currentUser.role === "leader";
+  const sortedColumns = useMemo(() => [...columns].sort((a,b) => a.order - b.order), [columns]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -63,14 +69,33 @@ export default function Kanban() {
 
   function onDragEnd(e: DragEndEvent) {
     const id = String(e.active.id);
-    const target = e.over?.id as TaskStatus | undefined;
-    if (!target) return;
+    const targetId = e.over?.id ? String(e.over.id) : undefined;
+    if (!targetId) return;
     const t = tasks.find(x => x.id === id);
-    if (t && t.status !== target) moveTask(id, target);
+    if (!t) return;
+    const targetCol = columns.find(c => c.id === targetId);
+    if (!targetCol) return;
+    if (targetCol.base) {
+      moveTask(id, { status: targetCol.base, column_id: null });
+    } else {
+      moveTask(id, { column_id: targetCol.id });
+    }
   }
 
-  function openNew(status: TaskStatus) { setEditingId(null); setDefaultStatus(status); setOpen(true); }
+  function openNew(col: KanbanColumn) {
+    setEditingId(null);
+    setDefaultStatus(col.base ?? "in_progress");
+    setDefaultColumnId(col.base ? null : col.id);
+    setOpen(true);
+  }
   function openEdit(id: string) { setEditingId(id); setOpen(true); }
+
+  function submitNewCol() {
+    if (!newColTitle.trim()) return;
+    createColumn(newColTitle.trim());
+    setNewColTitle("");
+    setNewColOpen(false);
+  }
 
   return (
     <div className="max-w-[1600px] mx-auto">
@@ -98,7 +123,7 @@ export default function Kanban() {
                 </Select>
               </>
             )}
-            <Button onClick={() => openNew("todo")} className="gap-2"><Plus className="w-4 h-4" /> Nova tarefa</Button>
+          <Button onClick={() => openNew(sortedColumns[0])} className="gap-2"><Plus className="w-4 h-4" /> Nova tarefa</Button>
           </>
         }
       />
@@ -115,21 +140,50 @@ export default function Kanban() {
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2">
-          {COLUMNS.map(col => (
+          {sortedColumns.map(col => (
             <Column
-              key={col.status}
-              status={col.status}
-              title={col.title}
-              accent={col.accent}
-              tasks={filtered.filter(t => t.status === col.status)}
+              key={col.id}
+              column={col}
+              tasks={filtered.filter(t => columnOf(t) === col.id)}
               onTaskClick={openEdit}
               onAdd={openNew}
+              canManage={isLeader}
+              onRename={renameColumn}
+              onDelete={deleteColumn}
             />
           ))}
+          {isLeader && (
+            <button
+              onClick={() => setNewColOpen(true)}
+              className="min-w-[200px] w-[200px] shrink-0 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-muted-foreground hover:border-accent/50 hover:text-accent transition-colors gap-2"
+            >
+              <Plus className="w-4 h-4" /> Nova coluna
+            </button>
+          )}
         </div>
       </DndContext>
 
-      <TaskDialog open={open} onOpenChange={setOpen} taskId={editingId} defaultStatus={defaultStatus} />
+      <TaskDialog open={open} onOpenChange={setOpen} taskId={editingId} defaultStatus={defaultStatus} defaultColumnId={defaultColumnId} />
+
+      <Dialog open={newColOpen} onOpenChange={setNewColOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Nova coluna</DialogTitle></DialogHeader>
+          <div className="py-2">
+            <Label>Nome da coluna</Label>
+            <Input
+              autoFocus
+              value={newColTitle}
+              onChange={(e) => setNewColTitle(e.target.value)}
+              placeholder="Ex: Aguardando aprovação do cliente"
+              onKeyDown={(e) => { if (e.key === "Enter") submitNewCol(); }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setNewColOpen(false)}>Cancelar</Button>
+            <Button onClick={submitNewCol}>Criar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
