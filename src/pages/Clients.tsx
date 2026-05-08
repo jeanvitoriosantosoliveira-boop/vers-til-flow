@@ -27,6 +27,7 @@ export default function Clients() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<Client>>({ name: "", company: "", email: "", monthly_fee: 0, monthly_hours_target: 40 });
   const [period, setPeriod] = useState<Period>({ preset: "all" });
+  const isLeader = currentUser.role === "leader";
 
   const visible = useMemo(() => {
     let list = currentUser.role === "leader"
@@ -112,11 +113,13 @@ export default function Clients() {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                <div>
-                  <p className="text-base font-display font-bold tabular-nums">R$ {((c.monthly_fee ?? 0)/1000).toFixed(1)}k</p>
-                  <p className="text-[10px] text-muted-foreground uppercase">Mensal</p>
-                </div>
+              <div className={`grid ${isLeader ? "grid-cols-3" : "grid-cols-2"} gap-2 text-center mb-4`}>
+                {isLeader && (
+                  <div>
+                    <p className="text-base font-display font-bold tabular-nums">R$ {((c.monthly_fee ?? 0)/1000).toFixed(1)}k</p>
+                    <p className="text-[10px] text-muted-foreground uppercase">Mensal</p>
+                  </div>
+                )}
                 <div>
                   <p className={`text-base font-display font-bold tabular-nums ${over ? "text-destructive" : ""}`}>{mh.toFixed(0)}h</p>
                   <p className="text-[10px] text-muted-foreground uppercase">/{target}h mês</p>
@@ -141,7 +144,7 @@ export default function Clients() {
         )}
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open && isLeader} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Novo cliente</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">

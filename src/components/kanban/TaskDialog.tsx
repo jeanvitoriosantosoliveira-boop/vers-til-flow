@@ -15,9 +15,10 @@ interface Props {
   onOpenChange: (b: boolean) => void;
   taskId: string | null;
   defaultStatus?: TaskStatus;
+  defaultColumnId?: string | null;
 }
 
-export function TaskDialog({ open, onOpenChange, taskId, defaultStatus }: Props) {
+export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultColumnId }: Props) {
   const { tasks, clients, users, comments, timeEntries, currentUser, createTask, updateTask, deleteTask, addComment, logTime, deleteTimeEntry } = useApp();
   const editing = tasks.find(t => t.id === taskId);
   const [form, setForm] = useState<Partial<Task>>({});
@@ -29,8 +30,8 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus }: Props)
 
   useEffect(() => {
     if (editing) setForm(editing);
-    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id });
-  }, [editing, defaultStatus, currentUser.id, open]);
+    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id, column_id: defaultColumnId ?? null });
+  }, [editing, defaultStatus, defaultColumnId, currentUser.id, open]);
 
   const taskComments = editing ? comments.filter(c => c.task_id === editing.id) : [];
   const taskLogs = useMemo(

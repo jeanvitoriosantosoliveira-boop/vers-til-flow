@@ -150,14 +150,16 @@ export default function ClientDetail() {
       </Card>
 
       {/* Métricas chave */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2">
-            <DollarSign className="w-3.5 h-3.5" /> Mensalidade
-          </div>
-          <p className="font-display text-2xl font-bold tabular-nums">R$ {fee.toLocaleString("pt-BR")}</p>
-          <p className="text-xs text-muted-foreground mt-1">≈ R$ {ratePerHour.toFixed(0)}/h sobre meta</p>
-        </Card>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isLeader ? "lg:grid-cols-4" : "lg:grid-cols-2"} gap-4 mb-6`}>
+        {isLeader && (
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2">
+              <DollarSign className="w-3.5 h-3.5" /> Mensalidade
+            </div>
+            <p className="font-display text-2xl font-bold tabular-nums">R$ {fee.toLocaleString("pt-BR")}</p>
+            <p className="text-xs text-muted-foreground mt-1">≈ R$ {ratePerHour.toFixed(0)}/h sobre meta</p>
+          </Card>
+        )}
         <Card className="p-5">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2">
             <Clock className="w-3.5 h-3.5" /> Horas no mês
@@ -178,15 +180,17 @@ export default function ClientDetail() {
           </div>
           <p className="text-xs text-muted-foreground mt-1">{(client.satisfaction ?? 0).toFixed(1)} / 5</p>
         </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2">
-            <Heart className="w-3.5 h-3.5" /> Lucro estimado
-          </div>
-          <p className={`font-display text-2xl font-bold tabular-nums ${profit < 0 ? "text-destructive" : "text-success"}`}>
-            R$ {profit.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Mensalidade − custo de horas</p>
-        </Card>
+        {isLeader && (
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2">
+              <Heart className="w-3.5 h-3.5" /> Lucro estimado
+            </div>
+            <p className={`font-display text-2xl font-bold tabular-nums ${profit < 0 ? "text-destructive" : "text-success"}`}>
+              R$ {profit.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Mensalidade − custo de horas</p>
+          </Card>
+        )}
       </div>
 
       {/* Barra de uso vs meta */}

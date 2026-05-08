@@ -1,13 +1,15 @@
 import { useMemo } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatSeconds } from "@/lib/format";
+import { ChevronRight, Briefcase } from "lucide-react";
 
 export default function Team() {
   const { users, tasks, currentUser } = useApp();
+  const navigate = useNavigate();
   if (currentUser.role !== "leader") return <Navigate to="/" replace />;
 
   const team = useMemo(() => users.filter(u => u.role === "employee").map(u => {
@@ -27,7 +29,7 @@ export default function Team() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {team.map(({ user: u, total, done, inProg, late, time, pct, overload }) => (
-          <Card key={u.id} className="p-6 hover:shadow-lift transition-all">
+          <Card key={u.id} onClick={() => navigate(`/team/${u.id}`)} className="p-6 hover:shadow-lift hover:-translate-y-0.5 hover:border-accent/40 transition-all cursor-pointer group">
             <div className="flex items-start justify-between mb-5">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-semibold shadow-glow">
@@ -35,12 +37,18 @@ export default function Team() {
                 </div>
                 <div>
                   <h3 className="font-semibold">{u.name}</h3>
-                  <p className="text-xs text-muted-foreground">{u.email}</p>
+                  {u.position && (
+                    <p className="text-xs text-accent font-medium flex items-center gap-1 mt-0.5">
+                      <Briefcase className="w-3 h-3" /> {u.position}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{u.email}</p>
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1">
                 {overload && <Badge variant="outline" className="border-warning/50 text-warning text-[10px]">Sobrecarga</Badge>}
                 {late > 0 && <Badge variant="outline" className="border-destructive/50 text-destructive text-[10px]">{late} atraso(s)</Badge>}
+                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-accent transition-colors mt-1" />
               </div>
             </div>
 
