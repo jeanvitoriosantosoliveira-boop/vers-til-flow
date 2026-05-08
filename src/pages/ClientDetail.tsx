@@ -150,7 +150,7 @@ export default function ClientDetail() {
       </Card>
 
       {/* Métricas chave */}
-      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${isLeader ? 4 : 2} gap-4 mb-6`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isLeader ? "lg:grid-cols-4" : "lg:grid-cols-2"} gap-4 mb-6`}>
         {isLeader && (
           <Card className="p-5">
             <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2">
