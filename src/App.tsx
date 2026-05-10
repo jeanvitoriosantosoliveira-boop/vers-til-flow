@@ -15,6 +15,10 @@ import Reports from "./pages/Reports";
 import Clients from "./pages/Clients";
 import ClientDetail from "./pages/ClientDetail";
 import Team from "./pages/Team";
+import TeamMemberDetail from "./pages/TeamMemberDetail";
+import Teams from "./pages/Teams";
+import Finance from "./pages/Finance";
+import ReportDetail from "./pages/ReportDetail";
 import TimeTracking from "./pages/TimeTracking";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound.tsx";
@@ -46,9 +50,13 @@ const App = () => (
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/kanban" element={<Kanban />} />
                       <Route path="/reports" element={<Reports />} />
+                      <Route path="/reports/:type" element={<ReportDetail />} />
                       <Route path="/clients" element={<Clients />} />
                       <Route path="/clients/:id" element={<ClientDetail />} />
                       <Route path="/team" element={<Team />} />
+                      <Route path="/team/:id" element={<TeamMemberDetail />} />
+                      <Route path="/teams" element={<Teams />} />
+                      <Route path="/finance" element={<Finance />} />
                       <Route path="/time" element={<TimeTracking />} />
                     </Route>
                     <Route path="*" element={<NotFound />} />
