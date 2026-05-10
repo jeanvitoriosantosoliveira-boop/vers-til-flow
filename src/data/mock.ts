@@ -1,40 +1,50 @@
-import type { Client, Task, User, Comment, TimeEntry, Expense, ExtraService } from "@/types";
+import type { Client, Task, User, Comment, TimeEntry, Expense, ExtraService, Team } from "@/types";
 
 export const mockUsers: User[] = [
   { id: "u1", name: "Ana Viana",      email: "ana@versatil.digital",     role: "leader",   password: "lider123", position: "Diretora / CEO",       salary: 14000, tax_rate: 28, hire_date: "2022-01-10" },
-  { id: "u2", name: "Ricardo Lima",   email: "ricardo@versatil.digital", role: "employee", password: "func123",  position: "Gestor de Tráfego",    salary:  4800, tax_rate: 32, hire_date: "2023-03-12" },
-  { id: "u3", name: "Maria Souza",    email: "maria@versatil.digital",   role: "employee", password: "func123",  position: "Social Media",          salary:  3800, tax_rate: 32, hire_date: "2023-08-01" },
-  { id: "u4", name: "Carlos Aguiar",  email: "carlos@versatil.digital",  role: "employee", password: "func123",  position: "Designer / Editor",     salary:  4200, tax_rate: 32, hire_date: "2024-02-20" },
-  { id: "u5", name: "Juliana Reis",   email: "juliana@versatil.digital", role: "employee", password: "func123",  position: "Estrategista de SEO",   salary:  5200, tax_rate: 32, hire_date: "2023-11-05" },
+  { id: "u2", name: "Ricardo Lima",   email: "ricardo@versatil.digital", role: "employee", password: "colab123", position: "Gestor de Tráfego",    salary:  4800, tax_rate: 32, hire_date: "2023-03-12", team_id: "tm1", is_manager: true },
+  { id: "u3", name: "Maria Souza",    email: "maria@versatil.digital",   role: "employee", password: "colab123", position: "Social Media",         salary:  3800, tax_rate: 32, hire_date: "2023-08-01", team_id: "tm1" },
+  { id: "u4", name: "Carlos Aguiar",  email: "carlos@versatil.digital",  role: "employee", password: "colab123", position: "Designer / Editor",    salary:  4200, tax_rate: 32, hire_date: "2024-02-20", team_id: "tm2", is_manager: true },
+  { id: "u5", name: "Juliana Reis",   email: "juliana@versatil.digital", role: "employee", password: "colab123", position: "Estrategista de SEO",  salary:  5200, tax_rate: 32, hire_date: "2023-11-05", team_id: "tm2" },
+];
+
+export const mockTeams: Team[] = [
+  { id: "tm1", name: "Performance & Conteúdo", description: "Tráfego pago, social media, copy.", color: "bg-primary",   manager_id: "u2", created_at: new Date().toISOString() },
+  { id: "tm2", name: "Branding & Criação",     description: "Design, vídeo, identidade visual.", color: "bg-accent",    manager_id: "u4", created_at: new Date().toISOString() },
 ];
 
 export const mockClients: Client[] = [
   { id: "c1", name: "Aurora Cosméticos", company: "Aurora SA", email: "contato@aurora.com", phone: "(11) 98888-1010",
     segment: "Beleza & Cosméticos", monthly_fee: 8500, contract_start: "2024-03-01",
+    contract_end: "2026-09-30", contract_months: 30,
     monthly_hours_target: 60, satisfaction: 4.6, health: "great",
     services: ["Social Media","Tráfego Pago","Produção de Conteúdo","Influenciadores"],
     notes: "Cliente âncora. Reuniões semanais às quintas.",
     status: "active", created_at: new Date().toISOString() },
   { id: "c2", name: "TechNova", company: "TechNova LTDA", email: "marketing@technova.io", phone: "(11) 99777-2020",
     segment: "SaaS B2B", monthly_fee: 12000, contract_start: "2023-11-15",
+    contract_end: "2026-05-31", contract_months: 30,
     monthly_hours_target: 80, satisfaction: 4.2, health: "good",
     services: ["SEO","Inbound","E-mail Marketing","Google Ads","Analytics"],
     notes: "Foco em geração de MQLs. KPI principal: CPL.",
     status: "active", created_at: new Date().toISOString() },
   { id: "c3", name: "Verde Bistrô", company: "Verde Bistrô", email: "ola@verdebistro.com", phone: "(11) 97666-3030",
     segment: "Gastronomia", monthly_fee: 3500, contract_start: "2025-01-10",
+    contract_end: "2026-07-10", contract_months: 18,
     monthly_hours_target: 25, satisfaction: 4.8, health: "great",
     services: ["Social Media","Fotografia"],
     notes: "Adoram resultados orgânicos.",
     status: "active", created_at: new Date().toISOString() },
   { id: "c4", name: "Studio Pilates", company: "Studio Pilates Zen", email: "contato@studiopilates.com", phone: "(11) 96555-4040",
     segment: "Saúde & Bem-estar", monthly_fee: 2200, contract_start: "2024-08-20",
+    contract_end: "2026-05-15", contract_months: 21,
     monthly_hours_target: 18, satisfaction: 3.2, health: "warning",
     services: ["Social Media","Branding"],
     notes: "Em rebranding. Atenção à comunicação visual.",
     status: "paused", created_at: new Date().toISOString() },
   { id: "c5", name: "Construtora Horizonte", company: "Horizonte SA", email: "marketing@horizonte.com", phone: "(11) 95444-5050",
     segment: "Construção Civil", monthly_fee: 9800, contract_start: "2024-06-01",
+    contract_end: "2026-06-01", contract_months: 24,
     monthly_hours_target: 70, satisfaction: 2.8, health: "risk",
     services: ["Site & Landing Pages","Tráfego Pago","Vídeo","CRM"],
     notes: "Cliente exigente — revisar entregas com cuidado extra.",
