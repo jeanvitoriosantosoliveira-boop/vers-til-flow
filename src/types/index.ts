@@ -11,6 +11,17 @@ export interface User {
   salary?: number;            // R$ bruto/mês
   tax_rate?: number;          // % de imposto/encargos sobre salário
   hire_date?: string | null;
+  team_id?: string | null;    // time ao qual pertence
+  is_manager?: boolean;       // gerente dentro do time
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description?: string | null;
+  color?: string;             // accent class (ex: "bg-primary")
+  manager_id?: string | null; // gerente principal
+  created_at: string;
 }
 
 export interface Client {
@@ -22,6 +33,8 @@ export interface Client {
   segment?: string | null;            // setor/segmento
   monthly_fee?: number;               // mensalidade (R$)
   contract_start?: string | null;
+  contract_end?: string | null;       // data de término do contrato
+  contract_months?: number;           // duração total em meses (opcional)
   monthly_hours_target?: number;      // meta de horas/mês para esse cliente
   satisfaction?: number;              // 0..5
   health?: "great" | "good" | "warning" | "risk";
@@ -34,6 +47,13 @@ export interface Client {
 export type TaskStatus = "todo" | "in_progress" | "review" | "done";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
+export type RecurrenceMode = "none" | "hourly" | "daily" | "weekly" | "monthly";
+export interface Recurrence {
+  mode: RecurrenceMode;
+  interval?: number;            // a cada N (horas/dias/semanas/meses). default 1
+  next_due?: string | null;     // próximo prazo previsto
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -42,12 +62,14 @@ export interface Task {
   priority: TaskPriority;
   client_id: string | null;
   assignee_id: string | null;
+  created_by?: string | null;   // quem criou (colaborador também pode criar)
   due_date?: string | null;
   created_at: string;
   updated_at: string;
   total_seconds: number;
   /** Quando definido, a tarefa é exibida nesta coluna customizada (apenas líder). */
   column_id?: string | null;
+  recurrence?: Recurrence;      // recorrência (hora/dia/semana/mês)
 }
 
 export interface TimeEntry {
