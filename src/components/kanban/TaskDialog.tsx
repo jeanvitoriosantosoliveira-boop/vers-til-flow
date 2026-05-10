@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useApp } from "@/store/AppStore";
-import type { Task, TaskPriority, TaskStatus } from "@/types";
-import { Trash2, Send, Plus, Clock, Trash } from "lucide-react";
+import type { Task, TaskPriority, TaskStatus, RecurrenceMode } from "@/types";
+import { Trash2, Send, Plus, Clock, Trash, Repeat } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 
 interface Props {
@@ -30,7 +30,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
   useEffect(() => {
     if (editing) setForm(editing);
-    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id, column_id: defaultColumnId ?? null });
+    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id, column_id: defaultColumnId ?? null, recurrence: { mode: "none", interval: 1 } });
   }, [editing, defaultStatus, defaultColumnId, currentUser.id, open]);
 
   const taskComments = editing ? comments.filter(c => c.task_id === editing.id) : [];
@@ -120,6 +120,33 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
             <div className="col-span-2">
               <Label>Prazo</Label>
               <Input type="date" value={form.due_date?.slice(0, 10) ?? ""} onChange={e => setForm({ ...form, due_date: e.target.value || null })} />
+            </div>
+            <div className="col-span-2">
+              <Label className="flex items-center gap-1.5"><Repeat className="w-3.5 h-3.5 text-accent" /> Recorrência</Label>
+              <div className="flex gap-2">
+                <Select value={form.recurrence?.mode ?? "none"} onValueChange={(v) => setForm({ ...form, recurrence: { ...(form.recurrence ?? {}), mode: v as RecurrenceMode, interval: form.recurrence?.interval ?? 1 } })}>
+                  <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Não repetir</SelectItem>
+                    <SelectItem value="hourly">A cada N horas</SelectItem>
+                    <SelectItem value="daily">Diariamente</SelectItem>
+                    <SelectItem value="weekly">Semanalmente</SelectItem>
+                    <SelectItem value="monthly">Mensalmente</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.recurrence?.mode && form.recurrence.mode !== "none" && (
+                  <Input
+                    type="number"
+                    min={1}
+                    className="w-24"
+                    value={form.recurrence?.interval ?? 1}
+                    onChange={(e) => setForm({ ...form, recurrence: { ...(form.recurrence ?? { mode: "daily" }), interval: Math.max(1, +e.target.value || 1) } })}
+                  />
+                )}
+              </div>
+              {form.recurrence?.mode && form.recurrence.mode !== "none" && (
+                <p className="text-[10px] text-muted-foreground mt-1">Ao concluir, uma nova ocorrência será agendada automaticamente.</p>
+              )}
             </div>
           </div>
 

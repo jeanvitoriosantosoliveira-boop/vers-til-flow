@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
 import { useApp } from "@/store/AppStore";
@@ -16,6 +16,8 @@ const nav = [
   { to: "/reports", label: "Relatórios", icon: BarChart3 },
   { to: "/clients", label: "Clientes", icon: Users },
   { to: "/team", label: "Equipe", icon: UserCog, leaderOnly: true },
+  { to: "/teams", label: "Times", icon: Network, leaderOnly: true },
+  { to: "/finance", label: "Financeiro", icon: Wallet, leaderOnly: true },
   { to: "/time", label: "Tempo", icon: Timer },
 ];
 
@@ -92,7 +94,7 @@ export function AppLayout() {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="hidden md:inline-flex gap-1 border-accent/40 text-accent">
-              <Sparkles className="w-3 h-3" /> {currentUser.role === "leader" ? "Líder" : "Funcionário"}
+              <Sparkles className="w-3 h-3" /> {currentUser.role === "leader" ? "Líder" : currentUser.is_manager ? "Gerente" : "Colaborador"}
             </Badge>
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Alternar tema">
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

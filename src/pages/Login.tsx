@@ -76,7 +76,7 @@ export default function Login() {
               >
                 <span>
                   <span className="font-medium">{u.name}</span>{" "}
-                  <span className="text-muted-foreground">— {u.role === "leader" ? "👑 Líder" : "👤 Funcionário"}</span>
+                  <span className="text-muted-foreground">— {u.role === "leader" ? "👑 Líder" : u.is_manager ? "🛡️ Gerente" : "👤 Colaborador"}</span>
                   <br />
                   <span className="text-muted-foreground">{u.email} · senha: <code>{u.password}</code></span>
                 </span>

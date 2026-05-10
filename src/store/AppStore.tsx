@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { mockClients, mockComments, mockTasks, mockTimeEntries, mockUsers, mockExpenses, mockExtraServices } from "@/data/mock";
+import { mockClients, mockComments, mockTasks, mockTimeEntries, mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
 import type {
   Client, Comment, Task, TaskStatus, TimeEntry, User,
-  KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings
+  KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings, Team, Recurrence
 } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationsContext";
@@ -23,6 +23,7 @@ interface AppState {
   extraServices: ExtraService[];
   teamNotes: TeamNote[];
   financeSettings: FinanceSettings;
+  teams: Team[];
   createTask: (t: Partial<Task>) => Promise<void>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   moveTask: (id: string, target: { status?: TaskStatus; column_id?: string | null }) => Promise<void>;
@@ -43,6 +44,9 @@ interface AppState {
   deleteTeamNote: (id: string) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   updateFinanceSettings: (patch: Partial<FinanceSettings>) => void;
+  createTeam: (t: Partial<Team>) => void;
+  updateTeam: (id: string, patch: Partial<Team>) => void;
+  deleteTeam: (id: string) => void;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -55,7 +59,8 @@ const LS = {
   extraServices: "vd:extra_services",
   teamNotes: "vd:team_notes",
   finance: "vd:finance_settings",
-  users: "vd:users",
+  users: "vd:users_v2",
+  teams: "vd:teams",
 };
 
 const DEFAULT_COLUMNS: KanbanColumn[] = [
@@ -92,6 +97,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [financeSettings, setFinanceSettings] = useState<FinanceSettings>(() =>
     loadLS<FinanceSettings>(LS.finance, { opening_balance: 25000, default_tax_rate: 32 })
   );
+  const [teams, setTeams] = useState<Team[]>(() => loadLS<Team[]>(LS.teams, mockTeams));
 
   useEffect(() => saveLS(LS.columns, columns), [columns]);
   useEffect(() => saveLS(LS.expenses, expenses), [expenses]);
@@ -99,6 +105,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => saveLS(LS.teamNotes, teamNotes), [teamNotes]);
   useEffect(() => saveLS(LS.finance, financeSettings), [financeSettings]);
   useEffect(() => saveLS(LS.users, users), [users]);
+  useEffect(() => saveLS(LS.teams, teams), [teams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,10 +144,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       priority: data.priority ?? "medium",
       client_id: data.client_id ?? null,
       assignee_id: data.assignee_id ?? null,
+      created_by: data.created_by ?? currentUser.id,
       due_date: data.due_date ?? null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       total_seconds: 0,
+      column_id: data.column_id ?? null,
+      recurrence: data.recurrence ?? { mode: "none" },
     };
     setTasks((prev) => [newTask, ...prev]);
     if (usingBackend && supabase) await supabase.from("tasks").insert(newTask);
@@ -152,7 +162,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       user_id: newTask.assignee_id ?? undefined,
     });
     toast.success("Tarefa criada", { description: newTask.title });
-  }, [usingBackend, users, pushNotif]);
+  }, [usingBackend, users, pushNotif, currentUser]);
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
     let prevTask: Task | undefined;
@@ -171,6 +181,35 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         body: `${prevTask.title}${isStatus ? ` → ${labelStatus(patch.status!)}` : ""}`,
         user_id: prevTask.assignee_id ?? undefined,
       });
+      // ----- Recorrência: ao concluir uma tarefa recorrente, agenda a próxima -----
+      if (patch.status === "done" && prevTask.status !== "done" && prevTask.recurrence && prevTask.recurrence.mode !== "none") {
+        const r = prevTask.recurrence;
+        const interval = r.interval ?? 1;
+        const base = prevTask.due_date ? new Date(prevTask.due_date) : new Date();
+        const next = new Date(base);
+        if (r.mode === "hourly")  next.setHours(next.getHours() + interval);
+        if (r.mode === "daily")   next.setDate(next.getDate() + interval);
+        if (r.mode === "weekly")  next.setDate(next.getDate() + 7 * interval);
+        if (r.mode === "monthly") next.setMonth(next.getMonth() + interval);
+        const nt: Task = {
+          ...prevTask,
+          id: uid(),
+          status: "todo",
+          column_id: null,
+          total_seconds: 0,
+          due_date: next.toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          recurrence: prevTask.recurrence,
+        };
+        setTasks(prev => [nt, ...prev]);
+        pushNotif({
+          type: "task_created",
+          title: "Próxima ocorrência agendada",
+          body: `${nt.title} → ${next.toLocaleDateString("pt-BR")}`,
+          user_id: nt.assignee_id ?? undefined,
+        });
+      }
     }
   }, [usingBackend, pushNotif]);
 
@@ -311,13 +350,35 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setFinanceSettings(prev => ({ ...prev, ...patch }));
   }, []);
 
+  // ---------- Teams ----------
+  const createTeam = useCallback((t: Partial<Team>) => {
+    const item: Team = {
+      id: uid(),
+      name: t.name ?? "Novo time",
+      description: t.description ?? null,
+      color: t.color ?? "bg-primary",
+      manager_id: t.manager_id ?? null,
+      created_at: new Date().toISOString(),
+    };
+    setTeams(prev => [item, ...prev]);
+    toast.success("Time criado", { description: item.name });
+  }, []);
+  const updateTeam = useCallback((id: string, patch: Partial<Team>) => {
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+  }, []);
+  const deleteTeam = useCallback((id: string) => {
+    setTeams(prev => prev.filter(t => t.id !== id));
+    setUsers(prev => prev.map(u => u.team_id === id ? { ...u, team_id: null, is_manager: false } : u));
+  }, []);
+
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
-    columns, expenses, extraServices, teamNotes, financeSettings,
+    columns, expenses, extraServices, teamNotes, financeSettings, teams,
     createTask, updateTask, moveTask, deleteTask, createClient, updateClient, addComment, logTime, deleteTimeEntry,
     createColumn, renameColumn, deleteColumn,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
     addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings,
+    createTeam, updateTeam, deleteTeam,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

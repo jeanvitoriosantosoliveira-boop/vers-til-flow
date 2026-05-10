@@ -4,7 +4,7 @@ import { useApp } from "@/store/AppStore";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Building2, ChevronRight, Star } from "lucide-react";
+import { Plus, Building2, ChevronRight, Star, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,16 @@ import { Badge } from "@/components/ui/badge";
 import type { Client } from "@/types";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 import { useSearch } from "@/context/SearchContext";
+
+function contractInfo(c: Client) {
+  if (!c.contract_end) return null;
+  const end = new Date(c.contract_end);
+  const days = Math.ceil((end.getTime() - Date.now()) / 86400000);
+  if (days < 0)   return { label: `Encerrado há ${-days}d`, tone: "destructive" as const, days };
+  if (days <= 30) return { label: `Encerra em ${days}d`,    tone: "warning" as const,     days };
+  if (days <= 60) return { label: `${days}d para o fim`,    tone: "secondary" as const,   days };
+  return { label: `Vigente até ${end.toLocaleDateString("pt-BR")}`, tone: "outline" as const, days };
+}
 
 const healthMap = {
   great:   { label: "Excelente", cls: "bg-success/15 text-success" },
@@ -25,7 +35,7 @@ export default function Clients() {
   const navigate = useNavigate();
   const { query } = useSearch();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<Partial<Client>>({ name: "", company: "", email: "", monthly_fee: 0, monthly_hours_target: 40 });
+  const [form, setForm] = useState<Partial<Client>>({ name: "", company: "", email: "", monthly_fee: 0, monthly_hours_target: 40, contract_months: 12 });
   const [period, setPeriod] = useState<Period>({ preset: "all" });
   const isLeader = currentUser.role === "leader";
 
@@ -113,6 +123,16 @@ export default function Clients() {
                   ))}
                 </div>
               </div>
+              {(() => {
+                const ci = contractInfo(c);
+                if (!ci) return null;
+                return (
+                  <div className={`flex items-center gap-1.5 text-[10px] mb-3 ${ci.tone === "destructive" ? "text-destructive" : ci.tone === "warning" ? "text-warning" : "text-muted-foreground"}`}>
+                    {(ci.tone === "destructive" || ci.tone === "warning") && <AlertTriangle className="w-3 h-3" />}
+                    <span className="font-medium">{ci.label}</span>
+                  </div>
+                );
+              })()}
               <div className={`grid ${isLeader ? "grid-cols-3" : "grid-cols-2"} gap-2 text-center mb-4`}>
                 {isLeader && (
                   <div>
@@ -154,10 +174,13 @@ export default function Clients() {
             <div><Label>Telefone</Label><Input value={form.phone ?? ""} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
             <div><Label>Mensalidade (R$)</Label><Input type="number" value={form.monthly_fee ?? 0} onChange={e => setForm({ ...form, monthly_fee: +e.target.value })} /></div>
             <div><Label>Meta horas/mês</Label><Input type="number" value={form.monthly_hours_target ?? 40} onChange={e => setForm({ ...form, monthly_hours_target: +e.target.value })} /></div>
+            <div><Label>Início do contrato</Label><Input type="date" value={form.contract_start ?? ""} onChange={e => setForm({ ...form, contract_start: e.target.value })} /></div>
+            <div><Label>Fim do contrato</Label><Input type="date" value={form.contract_end ?? ""} onChange={e => setForm({ ...form, contract_end: e.target.value })} /></div>
+            <div><Label>Duração (meses)</Label><Input type="number" value={form.contract_months ?? 12} onChange={e => setForm({ ...form, contract_months: +e.target.value })} /></div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={() => { if (form.name?.trim()) { createClient(form); setOpen(false); setForm({ name: "", company: "", email: "", monthly_fee: 0, monthly_hours_target: 40 }); } }}>Criar</Button>
+            <Button onClick={() => { if (form.name?.trim()) { createClient(form); setOpen(false); setForm({ name: "", company: "", email: "", monthly_fee: 0, monthly_hours_target: 40, contract_months: 12 }); } }}>Criar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
