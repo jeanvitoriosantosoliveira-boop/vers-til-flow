@@ -488,12 +488,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
-    columns, expenses, extraServices, teamNotes, financeSettings, teams,
-    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, addComment, logTime, deleteTimeEntry,
+    columns, expenses, extraServices, teamNotes, financeSettings, teams, cashAdjustments,
+    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, setClientSatisfaction,
+    addComment, logTime, deleteTimeEntry,
     createColumn, renameColumn, deleteColumn,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
-    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings,
-    createTeam, updateTeam, deleteTeam,
+    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings, addCustomCategory,
+    createTeam, updateTeam, deleteTeam, addUserToTeam, removeUserFromTeam,
+    addCashAdjustment, deleteCashAdjustment, visibleTaskIds,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -501,6 +503,73 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
 function labelStatus(s: TaskStatus) {
   return s === "todo" ? "A Fazer" : s === "in_progress" ? "Em Andamento" : s === "review" ? "Em Revisão" : "Concluído";
+}
+
+// ---------- Recorrência: cálculo de próximas ocorrências ----------
+function computeNextOccurrences(tpl: Task, now: Date): Date[] {
+  const r = tpl.recurrence;
+  if (!r || r.mode === "none") return [];
+  const out: Date[] = [];
+  const interval = Math.max(1, r.interval ?? 1);
+  const times = (r.times && r.times.length ? r.times : ["09:00"]).map(s => {
+    const [hh, mm] = s.split(":").map(Number);
+    return { hh: hh || 0, mm: mm || 0 };
+  });
+  const endDate = r.end_date ? new Date(r.end_date) : null;
+
+  // Janela: do horário do template até "agora" (gera tudo que já deveria ter sido criado)
+  const start = tpl.last_spawn ? new Date(tpl.last_spawn) : (tpl.due_date ? new Date(tpl.due_date) : new Date(tpl.created_at));
+  // Limite: no máx 31 dias à frente OU 50 ocorrências por scan
+  const horizon = new Date(now.getTime() + 31 * 86400000);
+  const limit = endDate && endDate < horizon ? endDate : horizon;
+
+  if (r.mode === "hourly") {
+    let d = new Date(start);
+    while (d <= limit && out.length < 50) {
+      d = new Date(d.getTime() + interval * 3600 * 1000);
+      if (d <= now) out.push(new Date(d));
+    }
+  } else if (r.mode === "daily") {
+    const cursor = new Date(start); cursor.setHours(0,0,0,0);
+    while (cursor <= limit && out.length < 50) {
+      times.forEach(t => {
+        const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
+        if (occ > start && occ <= now) out.push(occ);
+      });
+      cursor.setDate(cursor.getDate() + interval);
+    }
+  } else if (r.mode === "weekly") {
+    const days = (r.days_of_week && r.days_of_week.length ? r.days_of_week : [new Date(start).getDay()]);
+    const cursor = new Date(start); cursor.setHours(0,0,0,0);
+    while (cursor <= limit && out.length < 50) {
+      if (days.includes(cursor.getDay())) {
+        times.forEach(t => {
+          const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
+          if (occ > start && occ <= now) out.push(occ);
+        });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+      // pula intervalos de N semanas
+      const weeksDelta = Math.floor((cursor.getTime() - new Date(start).setHours(0,0,0,0)) / (7 * 86400000));
+      if (weeksDelta % interval !== 0) cursor.setDate(cursor.getDate() + 6);
+    }
+  } else if (r.mode === "monthly") {
+    const days = (r.days_of_month && r.days_of_month.length ? r.days_of_month : [new Date(start).getDate()]);
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cursor <= limit && out.length < 50) {
+      days.forEach(dom => {
+        times.forEach(t => {
+          const occ = new Date(cursor.getFullYear(), cursor.getMonth(), dom, t.hh, t.mm);
+          if (occ > start && occ <= now) out.push(occ);
+        });
+      });
+      cursor.setMonth(cursor.getMonth() + interval);
+    }
+  }
+
+  // Marca last_spawn
+  if (out.length) tpl.last_spawn = now.toISOString();
+  return out;
 }
 
 export function useApp() {
