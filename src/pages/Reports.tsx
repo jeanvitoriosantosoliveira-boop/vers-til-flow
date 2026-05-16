@@ -216,7 +216,7 @@ export default function Reports() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3"><Badge variant="outline" className="text-[10px]">{r.c.health ?? "—"}</Badge></td>
+                      <td className="px-4 py-3">{(() => { const h = healthMap[r.c.health ?? "good"]; return <Badge variant="outline" className={`text-[10px] ${h.cls}`}>{h.label}</Badge>; })()}</td>
                       <td className="px-4 py-3 text-right">
                         <Button size="sm" variant="ghost" onClick={() => exportClient(r.c.id)} className="gap-1.5"><FileSpreadsheet className="w-3 h-3" /> PDF</Button>
                       </td>
@@ -244,7 +244,7 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {taskRows.map(({t, client, assignee}) => (
+                {taskRows.slice(taskPage * PAGE_SIZE, (taskPage + 1) * PAGE_SIZE).map(({t, client, assignee}) => (
                   <tr key={t.id} className="border-t border-border hover:bg-muted/30 transition">
                     <td className="px-4 py-3 font-medium">{t.title}</td>
                     <td className="px-4 py-3 text-muted-foreground">{client?.name ?? "—"}</td>
@@ -257,6 +257,15 @@ export default function Reports() {
               </tbody>
             </table>
           </div>
+          {taskRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between p-3 border-t border-border text-xs">
+              <span className="text-muted-foreground">Mostrando {taskPage * PAGE_SIZE + 1}–{Math.min((taskPage + 1) * PAGE_SIZE, taskRows.length)} de {taskRows.length}</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" disabled={taskPage === 0} onClick={() => setTaskPage(p => Math.max(0, p - 1))}>Anterior</Button>
+                <Button size="sm" variant="outline" disabled={(taskPage + 1) * PAGE_SIZE >= taskRows.length} onClick={() => setTaskPage(p => p + 1)}>Próximo 20</Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
