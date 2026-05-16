@@ -386,6 +386,106 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setUsers(prev => prev.map(u => u.team_id === id ? { ...u, team_id: null, is_manager: false } : u));
   }, []);
 
+  const addUserToTeam = useCallback((userId: string, teamId: string) => {
+    setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_ids: Array.from(new Set([...(t.member_ids ?? []), userId])) } : t));
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, team_ids: Array.from(new Set([...(u.team_ids ?? (u.team_id ? [u.team_id] : [])), teamId])), team_id: u.team_id ?? teamId } : u));
+  }, []);
+  const removeUserFromTeam = useCallback((userId: string, teamId: string) => {
+    setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_ids: (t.member_ids ?? []).filter(x => x !== userId) } : t));
+    setUsers(prev => prev.map(u => {
+      if (u.id !== userId) return u;
+      const next = (u.team_ids ?? (u.team_id ? [u.team_id] : [])).filter(x => x !== teamId);
+      return { ...u, team_ids: next, team_id: u.team_id === teamId ? (next[0] ?? null) : u.team_id, is_manager: u.team_id === teamId ? false : u.is_manager };
+    }));
+  }, []);
+
+  const setClientSatisfaction = useCallback((id: string, value: number, note?: string) => {
+    const monthKey = new Date().toISOString().slice(0,7);
+    setClients(prev => prev.map(c => {
+      if (c.id !== id) return c;
+      const hist = (c.satisfaction_history ?? []).filter(h => h.month !== monthKey);
+      return { ...c, satisfaction: value, satisfaction_history: [...hist, { month: monthKey, value, note }].sort((a,b) => a.month.localeCompare(b.month)) };
+    }));
+    toast.success("Satisfação atualizada", { description: `${value.toFixed(1)} / 5` });
+  }, []);
+
+  const addCustomCategory = useCallback((label: string) => {
+    const key = "cat_" + label.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 20) + "_" + uid().slice(0, 4);
+    setFinanceSettings(prev => ({ ...prev, custom_categories: [...(prev.custom_categories ?? []), { key, label }] }));
+    return key;
+  }, []);
+
+  const addCashAdjustment = useCallback((a: Partial<CashAdjustment>) => {
+    const item: CashAdjustment = {
+      id: uid(),
+      amount: a.amount ?? 0,
+      reason: a.reason ?? "Ajuste de caixa",
+      date: a.date ?? new Date().toISOString().slice(0,10),
+      created_at: new Date().toISOString(),
+    };
+    setCashAdjustments(prev => [item, ...prev]);
+    toast.success("Ajuste de caixa lançado");
+  }, []);
+  const deleteCashAdjustment = useCallback((id: string) => setCashAdjustments(prev => prev.filter(c => c.id !== id)), []);
+
+  // ---------- Visibilidade hierárquica ----------
+  const visibleTaskIds = useCallback(() => {
+    if (currentUser.role === "leader") return new Set(tasks.map(t => t.id));
+    const ids = new Set<string>();
+    // próprias
+    tasks.forEach(t => { if (t.assignee_id === currentUser.id || t.created_by === currentUser.id) ids.add(t.id); });
+    // se gerente, vê dos times onde gerencia
+    if (currentUser.is_manager) {
+      const myTeamIds = currentUser.team_ids ?? (currentUser.team_id ? [currentUser.team_id] : []);
+      const myTeams = teams.filter(tm => myTeamIds.includes(tm.id) && tm.manager_id === currentUser.id);
+      const subordinateIds = new Set<string>();
+      myTeams.forEach(tm => (tm.member_ids ?? []).forEach(uid => subordinateIds.add(uid)));
+      users.forEach(u => {
+        const utIds = u.team_ids ?? (u.team_id ? [u.team_id] : []);
+        if (utIds.some(t => myTeams.find(mt => mt.id === t))) subordinateIds.add(u.id);
+      });
+      tasks.forEach(t => { if (t.assignee_id && subordinateIds.has(t.assignee_id)) ids.add(t.id); });
+    }
+    return ids;
+  }, [currentUser, tasks, teams, users]);
+
+  // ---------- Scheduler de recorrência ----------
+  useEffect(() => {
+    function spawnDueOccurrences() {
+      const now = new Date();
+      let spawned: Task[] = [];
+      tasks.filter(t => t.is_template && t.recurrence && t.recurrence.mode !== "none").forEach(tpl => {
+        const occ = computeNextOccurrences(tpl, now);
+        occ.forEach(date => {
+          const sig = `${tpl.id}__${date.toISOString()}`;
+          // evita duplicar instâncias já criadas
+          const exists = tasks.some(x => x.template_id === tpl.id && x.due_date && Math.abs(new Date(x.due_date).getTime() - date.getTime()) < 60_000);
+          if (exists) return;
+          spawned.push({
+            ...tpl,
+            id: uid(),
+            is_template: false,
+            template_id: tpl.id,
+            status: "todo",
+            column_id: null,
+            total_seconds: 0,
+            due_date: date.toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            last_spawn: null,
+          });
+        });
+      });
+      if (spawned.length) {
+        setTasks(prev => [...spawned, ...prev]);
+        spawned.forEach(s => pushNotif({ type: "task_created", title: "Tarefa recorrente agendada", body: `${s.title} · ${new Date(s.due_date!).toLocaleString("pt-BR")}`, user_id: s.assignee_id ?? undefined }));
+      }
+    }
+    spawnDueOccurrences();
+    const id = window.setInterval(spawnDueOccurrences, 60_000);
+    return () => window.clearInterval(id);
+  }, [tasks, pushNotif]);
+
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
     columns, expenses, extraServices, teamNotes, financeSettings, teams,
