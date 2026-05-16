@@ -24,7 +24,7 @@ const healthMap = {
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { clients, tasks, users, timeEntries, currentUser, updateClient } = useApp();
+  const { clients, tasks, users, timeEntries, currentUser, updateClient, setClientSatisfaction } = useApp();
   const client = clients.find(c => c.id === id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
@@ -175,10 +175,18 @@ export default function ClientDetail() {
           </div>
           <div className="flex items-center gap-1">
             {[1,2,3,4,5].map(n => (
-              <Star key={n} className={`w-5 h-5 ${n <= Math.round(client.satisfaction ?? 0) ? "fill-warning text-warning" : "text-muted-foreground/30"}`} />
+              <button key={n} type="button"
+                disabled={!isLeader}
+                onClick={() => setClientSatisfaction(client.id, n)}
+                className={isLeader ? "transition hover:scale-110 cursor-pointer" : "cursor-default"}
+                aria-label={`Definir ${n} estrelas`}>
+                <Star className={`w-5 h-5 ${n <= Math.round(client.satisfaction ?? 0) ? "fill-warning text-warning" : "text-muted-foreground/30"}`} />
+              </button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-1">{(client.satisfaction ?? 0).toFixed(1)} / 5</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {(client.satisfaction ?? 0).toFixed(1)} / 5 {isLeader && <span className="text-[10px]">· clique para registrar</span>}
+          </p>
         </Card>
         {isLeader && (
           <Card className="p-5">
@@ -263,7 +271,10 @@ export default function ClientDetail() {
                 <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center text-[10px] font-semibold text-primary-foreground">
                   {user!.name.split(" ").map(n => n[0]).slice(0,2).join("")}
                 </div>
-                <span className="text-sm flex-1 truncate">{user!.name}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{user!.name}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user!.position ?? "Colaborador"}</p>
+                </div>
                 <span className="text-xs tabular-nums text-muted-foreground">{formatSeconds(seconds)}</span>
               </div>
             ))}
@@ -271,6 +282,31 @@ export default function ClientDetail() {
           </div>
         </Card>
       </div>
+
+      {/* Histórico de satisfação */}
+      {(client.satisfaction_history?.length ?? 0) > 0 && (
+        <Card className="p-6 mb-6">
+          <h3 className="font-display font-semibold mb-1">Histórico de satisfação</h3>
+          <p className="text-xs text-muted-foreground mb-4">Avaliações registradas ao longo dos meses</p>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={(client.satisfaction_history ?? []).map(h => ({ mes: h.month, Nota: h.value }))}>
+                <defs>
+                  <linearGradient id="sat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--warning))" stopOpacity={0.5} />
+                    <stop offset="100%" stopColor="hsl(var(--warning))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <YAxis domain={[0,5]} stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 12 }} />
+                <Area type="monotone" dataKey="Nota" stroke="hsl(var(--warning))" strokeWidth={2} fill="url(#sat)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="p-6 lg:col-span-2">
