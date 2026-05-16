@@ -462,23 +462,91 @@ export default function Finance() {
 
         {/* SETTINGS */}
         <TabsContent value="settings" className="space-y-6">
-          <Card className="p-6 max-w-xl">
-            <h3 className="font-display font-semibold mb-4">Ajustes do financeiro</h3>
-            <div className="space-y-4">
-              <div>
-                <Label>Caixa inicial (R$)</Label>
-                <Input type="number" value={financeSettings.opening_balance}
-                  onChange={(e) => updateFinanceSettings({ opening_balance: +e.target.value })} />
-                <p className="text-xs text-muted-foreground mt-1">Saldo de partida usado para calcular o caixa atual.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="font-display font-semibold mb-4">Ajustes do financeiro</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label>Caixa inicial (R$)</Label>
+                  <Input type="number" value={financeSettings.opening_balance}
+                    onChange={(e) => updateFinanceSettings({ opening_balance: +e.target.value })} />
+                  <p className="text-xs text-muted-foreground mt-1">Saldo de partida usado para calcular o caixa atual.</p>
+                </div>
+                <div>
+                  <Label>% Imposto/encargos padrão</Label>
+                  <Input type="number" value={financeSettings.default_tax_rate}
+                    onChange={(e) => updateFinanceSettings({ default_tax_rate: +e.target.value })} />
+                  <p className="text-xs text-muted-foreground mt-1">Aplicado quando um funcionário não tem alíquota própria.</p>
+                </div>
+                <div className="border-t border-border pt-4">
+                  <Label>Categorias personalizadas</Label>
+                  <div className="flex gap-2 mt-1 mb-3">
+                    <Input value={newCatLabel} onChange={(e) => setNewCatLabel(e.target.value)} placeholder="Ex: Cursos, Reuniões, Eventos…" />
+                    <Button type="button" variant="outline" onClick={() => { if (newCatLabel.trim()) { addCustomCategory(newCatLabel.trim()); setNewCatLabel(""); } }} className="gap-1"><Plus className="w-3 h-3" /> Add</Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(financeSettings.custom_categories ?? []).map(c => (
+                      <Badge key={c.key} variant="secondary" className="bg-accent/10 text-accent border-accent/20">
+                        <Tag className="w-3 h-3 mr-1" /> {c.label}
+                      </Badge>
+                    ))}
+                    {!(financeSettings.custom_categories?.length) && <p className="text-xs text-muted-foreground">Nenhuma categoria personalizada.</p>}
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>% Imposto/encargos padrão</Label>
-                <Input type="number" value={financeSettings.default_tax_rate}
-                  onChange={(e) => updateFinanceSettings({ default_tax_rate: +e.target.value })} />
-                <p className="text-xs text-muted-foreground mt-1">Aplicado quando um funcionário não tem alíquota própria.</p>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="font-display font-semibold mb-1">Movimentação manual de caixa</h3>
+              <p className="text-xs text-muted-foreground mb-4">Lance aportes, retiradas ou ajustes diretos no saldo.</p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="col-span-2">
+                  <Label>Motivo</Label>
+                  <Input value={adjForm.reason} onChange={(e) => setAdjForm({ ...adjForm, reason: e.target.value })} placeholder="Ex: Aporte sócio, retirada pró-labore" />
+                </div>
+                <div>
+                  <Label>Tipo</Label>
+                  <Select value={adjForm.type} onValueChange={(v) => setAdjForm({ ...adjForm, type: v as "in"|"out" })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="in">Entrada (+)</SelectItem>
+                      <SelectItem value="out">Saída (−)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Valor (R$)</Label>
+                  <Input type="number" value={adjForm.amount} onChange={(e) => setAdjForm({ ...adjForm, amount: +e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Data</Label>
+                  <Input type="date" value={adjForm.date} onChange={(e) => setAdjForm({ ...adjForm, date: e.target.value })} />
+                </div>
               </div>
-            </div>
-          </Card>
+              <Button className="w-full gap-2" onClick={() => {
+                if (!adjForm.amount || !adjForm.reason.trim()) return;
+                addCashAdjustment({ amount: adjForm.type === "in" ? adjForm.amount : -adjForm.amount, reason: adjForm.reason, date: adjForm.date });
+                setAdjForm({ amount: 0, reason: "", date: new Date().toISOString().slice(0,10), type: "in" });
+              }}><Plus className="w-3 h-3" /> Lançar movimentação</Button>
+
+              <div className="mt-5 space-y-1.5 max-h-72 overflow-y-auto">
+                {!cashAdjustments.length && <p className="text-xs text-muted-foreground text-center py-3">Nenhuma movimentação manual.</p>}
+                {cashAdjustments.map(a => (
+                  <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/40 group">
+                    {a.amount >= 0
+                      ? <ArrowDownLeft className="w-4 h-4 text-success" />
+                      : <ArrowUpLeft className="w-4 h-4 text-destructive" />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{a.reason}</p>
+                      <p className="text-[10px] text-muted-foreground">{a.date}</p>
+                    </div>
+                    <span className={`font-display font-bold tabular-nums ${a.amount >= 0 ? "text-success" : "text-destructive"}`}>{BRL(Math.abs(a.amount))}</span>
+                    <button onClick={() => deleteCashAdjustment(a.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
 
