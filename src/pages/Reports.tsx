@@ -22,7 +22,15 @@ export default function Reports() {
   const [tab, setTab] = useState<Tab>("clients");
   const [period, setPeriod] = useState<Period>({ preset: "month" });
   const [q, setQ] = useState("");
+  const [taskPage, setTaskPage] = useState(0);
   const isLeader = currentUser.role === "leader";
+  const PAGE_SIZE = 20;
+  const healthMap: Record<string, { label: string; cls: string }> = {
+    great:   { label: "Excelente", cls: "bg-success/15 text-success border-success/30" },
+    good:    { label: "Saudável",  cls: "bg-primary/15 text-primary border-primary/30" },
+    warning: { label: "Atenção",   cls: "bg-warning/15 text-warning border-warning/30" },
+    risk:    { label: "Em risco",  cls: "bg-destructive/15 text-destructive border-destructive/30" },
+  };
 
   const periodEntries = useMemo(() => timeEntries.filter(e => inPeriod(e.logged_at, period)), [timeEntries, period]);
   const periodTasks = useMemo(() => tasks.filter(t => inPeriod(t.created_at, period) || inPeriod(t.updated_at, period)), [tasks, period]);
