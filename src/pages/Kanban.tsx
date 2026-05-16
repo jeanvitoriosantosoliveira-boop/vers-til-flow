@@ -38,7 +38,21 @@ export default function Kanban() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const filtered = useMemo(() => {
-    let list = currentUser.role === "leader" ? tasks : tasks.filter(t => t.assignee_id === currentUser.id);
+    // Templates de recorrência nunca aparecem no Kanban (apenas suas instâncias geradas)
+    let list = tasks.filter(t => !t.is_template);
+    if (currentUser.role !== "leader") {
+      // gerente vê de subordinados também
+      const isManager = currentUser.is_manager;
+      const subordinateIds = new Set<string>([currentUser.id]);
+      if (isManager) {
+        users.forEach(u => {
+          const utIds = u.team_ids ?? (u.team_id ? [u.team_id] : []);
+          const myTeamIds = currentUser.team_ids ?? (currentUser.team_id ? [currentUser.team_id] : []);
+          if (utIds.some(t => myTeamIds.includes(t))) subordinateIds.add(u.id);
+        });
+      }
+      list = list.filter(t => (t.assignee_id && subordinateIds.has(t.assignee_id)) || t.created_by === currentUser.id);
+    }
     if (filterClient !== "all") list = list.filter(t => t.client_id === filterClient);
     if (filterAssignee !== "all") list = list.filter(t => t.assignee_id === filterAssignee);
 

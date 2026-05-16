@@ -3,7 +3,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { mockClients, mockComments, mockTasks, mockTimeEntries, mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
 import type {
   Client, Comment, Task, TaskStatus, TimeEntry, User,
-  KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings, Team, Recurrence
+  KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings, Team, CashAdjustment
 } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationsContext";
@@ -24,12 +24,14 @@ interface AppState {
   teamNotes: TeamNote[];
   financeSettings: FinanceSettings;
   teams: Team[];
+  cashAdjustments: CashAdjustment[];
   createTask: (t: Partial<Task>) => Promise<void>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   moveTask: (id: string, target: { status?: TaskStatus; column_id?: string | null }) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   createClient: (c: Partial<Client>) => Promise<void>;
   updateClient: (id: string, patch: Partial<Client>) => Promise<void>;
+  setClientSatisfaction: (id: string, value: number, note?: string) => void;
   addComment: (taskId: string, body: string) => Promise<void>;
   logTime: (input: { task_id: string; seconds: number; description?: string; logged_at?: string }) => Promise<void>;
   deleteTimeEntry: (id: string) => Promise<void>;
@@ -44,9 +46,15 @@ interface AppState {
   deleteTeamNote: (id: string) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   updateFinanceSettings: (patch: Partial<FinanceSettings>) => void;
+  addCustomCategory: (label: string) => string;
   createTeam: (t: Partial<Team>) => void;
   updateTeam: (id: string, patch: Partial<Team>) => void;
   deleteTeam: (id: string) => void;
+  addUserToTeam: (userId: string, teamId: string) => void;
+  removeUserFromTeam: (userId: string, teamId: string) => void;
+  addCashAdjustment: (a: Partial<CashAdjustment>) => void;
+  deleteCashAdjustment: (id: string) => void;
+  visibleTaskIds: () => Set<string>;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -59,8 +67,11 @@ const LS = {
   extraServices: "vd:extra_services",
   teamNotes: "vd:team_notes",
   finance: "vd:finance_settings",
-  users: "vd:users_v2",
+  users: "vd:users_v3",
   teams: "vd:teams",
+  cash: "vd:cash_adjustments",
+  clients: "vd:clients_v2",
+  tasks: "vd:tasks_v2",
 };
 
 const DEFAULT_COLUMNS: KanbanColumn[] = [
@@ -83,8 +94,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { push: pushNotif } = useNotifications();
 
   const [users, setUsers] = useState<User[]>(() => loadLS<User[]>(LS.users, mockUsers));
-  const [clients, setClients] = useState<Client[]>(mockClients);
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [clients, setClients] = useState<Client[]>(() => loadLS<Client[]>(LS.clients, mockClients));
+  const [tasks, setTasks] = useState<Task[]>(() => loadLS<Task[]>(LS.tasks, mockTasks));
   const [comments, setComments] = useState<Comment[]>(mockComments);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(mockTimeEntries);
   const [usingBackend, setUsingBackend] = useState(false);
@@ -95,9 +106,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [extraServices, setExtraServices] = useState<ExtraService[]>(() => loadLS<ExtraService[]>(LS.extraServices, mockExtraServices));
   const [teamNotes, setTeamNotes] = useState<TeamNote[]>(() => loadLS<TeamNote[]>(LS.teamNotes, []));
   const [financeSettings, setFinanceSettings] = useState<FinanceSettings>(() =>
-    loadLS<FinanceSettings>(LS.finance, { opening_balance: 25000, default_tax_rate: 32 })
+    loadLS<FinanceSettings>(LS.finance, { opening_balance: 25000, default_tax_rate: 32, custom_categories: [] })
   );
   const [teams, setTeams] = useState<Team[]>(() => loadLS<Team[]>(LS.teams, mockTeams));
+  const [cashAdjustments, setCashAdjustments] = useState<CashAdjustment[]>(() => loadLS<CashAdjustment[]>(LS.cash, []));
 
   useEffect(() => saveLS(LS.columns, columns), [columns]);
   useEffect(() => saveLS(LS.expenses, expenses), [expenses]);
@@ -106,6 +118,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => saveLS(LS.finance, financeSettings), [financeSettings]);
   useEffect(() => saveLS(LS.users, users), [users]);
   useEffect(() => saveLS(LS.teams, teams), [teams]);
+  useEffect(() => saveLS(LS.cash, cashAdjustments), [cashAdjustments]);
+  useEffect(() => saveLS(LS.clients, clients), [clients]);
+  useEffect(() => saveLS(LS.tasks, tasks), [tasks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -371,14 +386,116 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setUsers(prev => prev.map(u => u.team_id === id ? { ...u, team_id: null, is_manager: false } : u));
   }, []);
 
+  const addUserToTeam = useCallback((userId: string, teamId: string) => {
+    setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_ids: Array.from(new Set([...(t.member_ids ?? []), userId])) } : t));
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, team_ids: Array.from(new Set([...(u.team_ids ?? (u.team_id ? [u.team_id] : [])), teamId])), team_id: u.team_id ?? teamId } : u));
+  }, []);
+  const removeUserFromTeam = useCallback((userId: string, teamId: string) => {
+    setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_ids: (t.member_ids ?? []).filter(x => x !== userId) } : t));
+    setUsers(prev => prev.map(u => {
+      if (u.id !== userId) return u;
+      const next = (u.team_ids ?? (u.team_id ? [u.team_id] : [])).filter(x => x !== teamId);
+      return { ...u, team_ids: next, team_id: u.team_id === teamId ? (next[0] ?? null) : u.team_id, is_manager: u.team_id === teamId ? false : u.is_manager };
+    }));
+  }, []);
+
+  const setClientSatisfaction = useCallback((id: string, value: number, note?: string) => {
+    const monthKey = new Date().toISOString().slice(0,7);
+    setClients(prev => prev.map(c => {
+      if (c.id !== id) return c;
+      const hist = (c.satisfaction_history ?? []).filter(h => h.month !== monthKey);
+      return { ...c, satisfaction: value, satisfaction_history: [...hist, { month: monthKey, value, note }].sort((a,b) => a.month.localeCompare(b.month)) };
+    }));
+    toast.success("Satisfação atualizada", { description: `${value.toFixed(1)} / 5` });
+  }, []);
+
+  const addCustomCategory = useCallback((label: string) => {
+    const key = "cat_" + label.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 20) + "_" + uid().slice(0, 4);
+    setFinanceSettings(prev => ({ ...prev, custom_categories: [...(prev.custom_categories ?? []), { key, label }] }));
+    return key;
+  }, []);
+
+  const addCashAdjustment = useCallback((a: Partial<CashAdjustment>) => {
+    const item: CashAdjustment = {
+      id: uid(),
+      amount: a.amount ?? 0,
+      reason: a.reason ?? "Ajuste de caixa",
+      date: a.date ?? new Date().toISOString().slice(0,10),
+      created_at: new Date().toISOString(),
+    };
+    setCashAdjustments(prev => [item, ...prev]);
+    toast.success("Ajuste de caixa lançado");
+  }, []);
+  const deleteCashAdjustment = useCallback((id: string) => setCashAdjustments(prev => prev.filter(c => c.id !== id)), []);
+
+  // ---------- Visibilidade hierárquica ----------
+  const visibleTaskIds = useCallback(() => {
+    if (currentUser.role === "leader") return new Set(tasks.map(t => t.id));
+    const ids = new Set<string>();
+    // próprias
+    tasks.forEach(t => { if (t.assignee_id === currentUser.id || t.created_by === currentUser.id) ids.add(t.id); });
+    // se gerente, vê dos times onde gerencia
+    if (currentUser.is_manager) {
+      const myTeamIds = currentUser.team_ids ?? (currentUser.team_id ? [currentUser.team_id] : []);
+      const myTeams = teams.filter(tm => myTeamIds.includes(tm.id) && tm.manager_id === currentUser.id);
+      const subordinateIds = new Set<string>();
+      myTeams.forEach(tm => (tm.member_ids ?? []).forEach(uid => subordinateIds.add(uid)));
+      users.forEach(u => {
+        const utIds = u.team_ids ?? (u.team_id ? [u.team_id] : []);
+        if (utIds.some(t => myTeams.find(mt => mt.id === t))) subordinateIds.add(u.id);
+      });
+      tasks.forEach(t => { if (t.assignee_id && subordinateIds.has(t.assignee_id)) ids.add(t.id); });
+    }
+    return ids;
+  }, [currentUser, tasks, teams, users]);
+
+  // ---------- Scheduler de recorrência ----------
+  useEffect(() => {
+    function spawnDueOccurrences() {
+      const now = new Date();
+      let spawned: Task[] = [];
+      tasks.filter(t => t.is_template && t.recurrence && t.recurrence.mode !== "none").forEach(tpl => {
+        const occ = computeNextOccurrences(tpl, now);
+        occ.forEach(date => {
+          const sig = `${tpl.id}__${date.toISOString()}`;
+          // evita duplicar instâncias já criadas
+          const exists = tasks.some(x => x.template_id === tpl.id && x.due_date && Math.abs(new Date(x.due_date).getTime() - date.getTime()) < 60_000);
+          if (exists) return;
+          spawned.push({
+            ...tpl,
+            id: uid(),
+            is_template: false,
+            template_id: tpl.id,
+            status: "todo",
+            column_id: null,
+            total_seconds: 0,
+            due_date: date.toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            last_spawn: null,
+          });
+        });
+      });
+      if (spawned.length) {
+        setTasks(prev => [...spawned, ...prev]);
+        spawned.forEach(s => pushNotif({ type: "task_created", title: "Tarefa recorrente agendada", body: `${s.title} · ${new Date(s.due_date!).toLocaleString("pt-BR")}`, user_id: s.assignee_id ?? undefined }));
+      }
+    }
+    spawnDueOccurrences();
+    const id = window.setInterval(spawnDueOccurrences, 60_000);
+    return () => window.clearInterval(id);
+  }, [tasks, pushNotif]);
+
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
-    columns, expenses, extraServices, teamNotes, financeSettings, teams,
-    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, addComment, logTime, deleteTimeEntry,
+    columns, expenses, extraServices, teamNotes, financeSettings, teams, cashAdjustments,
+    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, setClientSatisfaction,
+    addComment, logTime, deleteTimeEntry,
     createColumn, renameColumn, deleteColumn,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
-    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings,
-    createTeam, updateTeam, deleteTeam,
+    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings, addCustomCategory,
+    createTeam, updateTeam, deleteTeam, addUserToTeam, removeUserFromTeam,
+    addCashAdjustment, deleteCashAdjustment, visibleTaskIds,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -386,6 +503,73 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
 function labelStatus(s: TaskStatus) {
   return s === "todo" ? "A Fazer" : s === "in_progress" ? "Em Andamento" : s === "review" ? "Em Revisão" : "Concluído";
+}
+
+// ---------- Recorrência: cálculo de próximas ocorrências ----------
+function computeNextOccurrences(tpl: Task, now: Date): Date[] {
+  const r = tpl.recurrence;
+  if (!r || r.mode === "none") return [];
+  const out: Date[] = [];
+  const interval = Math.max(1, r.interval ?? 1);
+  const times = (r.times && r.times.length ? r.times : ["09:00"]).map(s => {
+    const [hh, mm] = s.split(":").map(Number);
+    return { hh: hh || 0, mm: mm || 0 };
+  });
+  const endDate = r.end_date ? new Date(r.end_date) : null;
+
+  // Janela: do horário do template até "agora" (gera tudo que já deveria ter sido criado)
+  const start = tpl.last_spawn ? new Date(tpl.last_spawn) : (tpl.due_date ? new Date(tpl.due_date) : new Date(tpl.created_at));
+  // Limite: no máx 31 dias à frente OU 50 ocorrências por scan
+  const horizon = new Date(now.getTime() + 31 * 86400000);
+  const limit = endDate && endDate < horizon ? endDate : horizon;
+
+  if (r.mode === "hourly") {
+    let d = new Date(start);
+    while (d <= limit && out.length < 50) {
+      d = new Date(d.getTime() + interval * 3600 * 1000);
+      if (d <= now) out.push(new Date(d));
+    }
+  } else if (r.mode === "daily") {
+    const cursor = new Date(start); cursor.setHours(0,0,0,0);
+    while (cursor <= limit && out.length < 50) {
+      times.forEach(t => {
+        const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
+        if (occ > start && occ <= now) out.push(occ);
+      });
+      cursor.setDate(cursor.getDate() + interval);
+    }
+  } else if (r.mode === "weekly") {
+    const days = (r.days_of_week && r.days_of_week.length ? r.days_of_week : [new Date(start).getDay()]);
+    const cursor = new Date(start); cursor.setHours(0,0,0,0);
+    while (cursor <= limit && out.length < 50) {
+      if (days.includes(cursor.getDay())) {
+        times.forEach(t => {
+          const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
+          if (occ > start && occ <= now) out.push(occ);
+        });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+      // pula intervalos de N semanas
+      const weeksDelta = Math.floor((cursor.getTime() - new Date(start).setHours(0,0,0,0)) / (7 * 86400000));
+      if (weeksDelta % interval !== 0) cursor.setDate(cursor.getDate() + 6);
+    }
+  } else if (r.mode === "monthly") {
+    const days = (r.days_of_month && r.days_of_month.length ? r.days_of_month : [new Date(start).getDate()]);
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cursor <= limit && out.length < 50) {
+      days.forEach(dom => {
+        times.forEach(t => {
+          const occ = new Date(cursor.getFullYear(), cursor.getMonth(), dom, t.hh, t.mm);
+          if (occ > start && occ <= now) out.push(occ);
+        });
+      });
+      cursor.setMonth(cursor.getMonth() + interval);
+    }
+  }
+
+  // Marca last_spawn
+  if (out.length) tpl.last_spawn = now.toISOString();
+  return out;
 }
 
 export function useApp() {

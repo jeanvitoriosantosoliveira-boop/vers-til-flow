@@ -6,22 +6,36 @@ export interface User {
   email: string;
   role: Role;
   avatar_url?: string | null;
-  password?: string; // mock-only
-  position?: string;          // ex: "Gestor de Tráfego"
-  salary?: number;            // R$ bruto/mês
-  tax_rate?: number;          // % de imposto/encargos sobre salário
+  password?: string;
+  position?: string;
+  salary?: number;
+  tax_rate?: number;
   hire_date?: string | null;
-  team_id?: string | null;    // time ao qual pertence
-  is_manager?: boolean;       // gerente dentro do time
+  team_id?: string | null;        // legado: time principal
+  team_ids?: string[];            // múltiplos times
+  is_manager?: boolean;
+  phone?: string | null;
+  birthdate?: string | null;
+  bio?: string | null;
+  city?: string | null;
+  skills?: string[];
 }
 
 export interface Team {
   id: string;
   name: string;
   description?: string | null;
-  color?: string;             // accent class (ex: "bg-primary")
-  manager_id?: string | null; // gerente principal
+  color?: string;
+  manager_id?: string | null;
+  cover_url?: string | null;
+  member_ids?: string[];
   created_at: string;
+}
+
+export interface SatisfactionEntry {
+  month: string;        // YYYY-MM
+  value: number;        // 0..5
+  note?: string | null;
 }
 
 export interface Client {
@@ -30,15 +44,16 @@ export interface Client {
   company?: string | null;
   email?: string | null;
   phone?: string | null;
-  segment?: string | null;            // setor/segmento
-  monthly_fee?: number;               // mensalidade (R$)
+  segment?: string | null;
+  monthly_fee?: number;
   contract_start?: string | null;
-  contract_end?: string | null;       // data de término do contrato
-  contract_months?: number;           // duração total em meses (opcional)
-  monthly_hours_target?: number;      // meta de horas/mês para esse cliente
-  satisfaction?: number;              // 0..5
+  contract_end?: string | null;
+  contract_months?: number;
+  monthly_hours_target?: number;
+  satisfaction?: number;
+  satisfaction_history?: SatisfactionEntry[];
   health?: "great" | "good" | "warning" | "risk";
-  services?: string[];                // ex: ["SEO","Tráfego pago","Conteúdo"]
+  services?: string[];
   notes?: string | null;
   status: "active" | "paused" | "archived";
   created_at: string;
@@ -50,8 +65,12 @@ export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type RecurrenceMode = "none" | "hourly" | "daily" | "weekly" | "monthly";
 export interface Recurrence {
   mode: RecurrenceMode;
-  interval?: number;            // a cada N (horas/dias/semanas/meses). default 1
-  next_due?: string | null;     // próximo prazo previsto
+  interval?: number;            // a cada N (default 1)
+  next_due?: string | null;
+  days_of_week?: number[];      // 0=Dom..6=Sáb (weekly)
+  days_of_month?: number[];     // 1..31 (monthly)
+  times?: string[];             // ["09:00","15:30"]
+  end_date?: string | null;
 }
 
 export interface Task {
@@ -62,14 +81,16 @@ export interface Task {
   priority: TaskPriority;
   client_id: string | null;
   assignee_id: string | null;
-  created_by?: string | null;   // quem criou (colaborador também pode criar)
+  created_by?: string | null;
   due_date?: string | null;
   created_at: string;
   updated_at: string;
   total_seconds: number;
-  /** Quando definido, a tarefa é exibida nesta coluna customizada (apenas líder). */
   column_id?: string | null;
-  recurrence?: Recurrence;      // recorrência (hora/dia/semana/mês)
+  recurrence?: Recurrence;
+  is_template?: boolean;        // template recorrente, não aparece no Kanban
+  template_id?: string | null;  // instância gerada de um template
+  last_spawn?: string | null;
 }
 
 export interface TimeEntry {
@@ -78,8 +99,8 @@ export interface TimeEntry {
   user_id: string;
   seconds: number;
   description?: string | null;
-  logged_at: string;       // data do trabalho
-  created_at: string;      // data do registro
+  logged_at: string;
+  created_at: string;
 }
 
 export interface Comment {
@@ -93,15 +114,12 @@ export interface Comment {
 export interface KanbanColumn {
   id: string;
   title: string;
-  accent: string;          // tailwind bg-* token
+  accent: string;
   order: number;
-  /** Colunas base (todo, in_progress, review, done) não podem ser excluídas. */
   base?: TaskStatus;
 }
 
-export type ExpenseCategory =
-  | "rent" | "utilities" | "internet" | "equipment" | "software"
-  | "marketing" | "tax" | "other";
+export type ExpenseCategory = string;  // categorias livres (padrão + customizadas)
 
 export interface Expense {
   id: string;
@@ -109,8 +127,8 @@ export interface Expense {
   description?: string | null;
   amount: number;
   category: ExpenseCategory;
-  date: string;             // YYYY-MM-DD
-  recurring?: boolean;      // se true, repete todo mês
+  date: string;
+  recurring?: boolean;
   created_at: string;
 }
 
@@ -126,13 +144,22 @@ export interface ExtraService {
 
 export interface TeamNote {
   id: string;
-  user_id: string;          // funcionário
+  user_id: string;
   body: string;
   created_at: string;
-  author_id: string;        // líder que escreveu
+  author_id: string;
 }
 
 export interface FinanceSettings {
-  opening_balance: number;  // caixa inicial
-  default_tax_rate: number; // % padrão sobre folha
+  opening_balance: number;
+  default_tax_rate: number;
+  custom_categories?: { key: string; label: string }[];
+}
+
+export interface CashAdjustment {
+  id: string;
+  amount: number;     // positivo = aporte, negativo = retirada
+  reason: string;
+  date: string;
+  created_at: string;
 }

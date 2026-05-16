@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useApp } from "@/store/AppStore";
 import type { Task, TaskPriority, TaskStatus, RecurrenceMode } from "@/types";
-import { Trash2, Send, Plus, Clock, Trash, Repeat } from "lucide-react";
+import { Trash2, Send, Plus, Clock, Trash, Repeat, CalendarClock } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 
 interface Props {
@@ -30,7 +30,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
   useEffect(() => {
     if (editing) setForm(editing);
-    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id, column_id: defaultColumnId ?? null, recurrence: { mode: "none", interval: 1 } });
+    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id, column_id: defaultColumnId ?? null, recurrence: { mode: "none", interval: 1, times: ["09:00"] }, is_template: false });
   }, [editing, defaultStatus, defaultColumnId, currentUser.id, open]);
 
   const taskComments = editing ? comments.filter(c => c.task_id === editing.id) : [];
@@ -41,8 +41,15 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
   async function save() {
     if (!form.title?.trim()) return;
-    if (editing) await updateTask(editing.id, form);
-    else await createTask(form);
+    // Se a tarefa tem recorrência configurada e ainda não é template, marcamos como template
+    const payload: Partial<Task> = { ...form };
+    if (payload.recurrence && payload.recurrence.mode !== "none") {
+      payload.is_template = true;
+    } else {
+      payload.is_template = false;
+    }
+    if (editing) await updateTask(editing.id, payload);
+    else await createTask(payload);
     onOpenChange(false);
   }
 
@@ -121,31 +128,96 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
               <Label>Prazo</Label>
               <Input type="date" value={form.due_date?.slice(0, 10) ?? ""} onChange={e => setForm({ ...form, due_date: e.target.value || null })} />
             </div>
-            <div className="col-span-2">
-              <Label className="flex items-center gap-1.5"><Repeat className="w-3.5 h-3.5 text-accent" /> Recorrência</Label>
-              <div className="flex gap-2">
-                <Select value={form.recurrence?.mode ?? "none"} onValueChange={(v) => setForm({ ...form, recurrence: { ...(form.recurrence ?? {}), mode: v as RecurrenceMode, interval: form.recurrence?.interval ?? 1 } })}>
+            <div className="col-span-2 border border-border rounded-xl p-3 bg-muted/20">
+              <Label className="flex items-center gap-1.5 mb-2"><Repeat className="w-3.5 h-3.5 text-accent" /> Recorrência</Label>
+              <div className="flex gap-2 mb-3">
+                <Select value={form.recurrence?.mode ?? "none"} onValueChange={(v) => setForm({ ...form, recurrence: { ...(form.recurrence ?? {}), mode: v as RecurrenceMode, interval: form.recurrence?.interval ?? 1, times: form.recurrence?.times ?? ["09:00"] } })}>
                   <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Não repetir</SelectItem>
                     <SelectItem value="hourly">A cada N horas</SelectItem>
                     <SelectItem value="daily">Diariamente</SelectItem>
-                    <SelectItem value="weekly">Semanalmente</SelectItem>
-                    <SelectItem value="monthly">Mensalmente</SelectItem>
+                    <SelectItem value="weekly">Semanalmente (escolher dias)</SelectItem>
+                    <SelectItem value="monthly">Mensalmente (escolher dias do mês)</SelectItem>
                   </SelectContent>
                 </Select>
                 {form.recurrence?.mode && form.recurrence.mode !== "none" && (
-                  <Input
-                    type="number"
-                    min={1}
-                    className="w-24"
-                    value={form.recurrence?.interval ?? 1}
-                    onChange={(e) => setForm({ ...form, recurrence: { ...(form.recurrence ?? { mode: "daily" }), interval: Math.max(1, +e.target.value || 1) } })}
-                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">a cada</span>
+                    <Input type="number" min={1} className="w-16 h-9"
+                      value={form.recurrence?.interval ?? 1}
+                      onChange={(e) => setForm({ ...form, recurrence: { ...(form.recurrence ?? { mode: "daily" }), interval: Math.max(1, +e.target.value || 1) } })} />
+                    <span className="text-xs text-muted-foreground">{form.recurrence.mode === "hourly" ? "h" : form.recurrence.mode === "daily" ? "dia(s)" : form.recurrence.mode === "weekly" ? "sem." : "mês(es)"}</span>
+                  </div>
                 )}
               </div>
+
+              {form.recurrence?.mode === "weekly" && (
+                <div className="mb-3">
+                  <Label className="text-[10px] uppercase">Dias da semana</Label>
+                  <div className="flex gap-1 mt-1">
+                    {["D","S","T","Q","Q","S","S"].map((l, i) => {
+                      const active = (form.recurrence?.days_of_week ?? []).includes(i);
+                      return (
+                        <button key={i} type="button" onClick={() => {
+                          const cur = new Set(form.recurrence?.days_of_week ?? []);
+                          if (cur.has(i)) cur.delete(i); else cur.add(i);
+                          setForm({ ...form, recurrence: { ...(form.recurrence!), days_of_week: [...cur].sort() } });
+                        }} className={`w-9 h-9 rounded-lg text-xs font-semibold transition ${active ? "bg-primary text-primary-foreground shadow-glow" : "bg-muted hover:bg-muted-foreground/20"}`}>{l}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {form.recurrence?.mode === "monthly" && (
+                <div className="mb-3">
+                  <Label className="text-[10px] uppercase">Dias do mês</Label>
+                  <div className="grid grid-cols-10 gap-1 mt-1">
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
+                      const active = (form.recurrence?.days_of_month ?? []).includes(d);
+                      return (
+                        <button key={d} type="button" onClick={() => {
+                          const cur = new Set(form.recurrence?.days_of_month ?? []);
+                          if (cur.has(d)) cur.delete(d); else cur.add(d);
+                          setForm({ ...form, recurrence: { ...(form.recurrence!), days_of_month: [...cur].sort((a,b) => a-b) } });
+                        }} className={`h-8 rounded-md text-xs font-semibold transition ${active ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>{d}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {form.recurrence?.mode && ["daily","weekly","monthly"].includes(form.recurrence.mode) && (
+                <div className="mb-2">
+                  <Label className="text-[10px] uppercase flex items-center gap-1"><CalendarClock className="w-3 h-3" /> Horários (uma tarefa por horário)</Label>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {(form.recurrence?.times ?? []).map((t, idx) => (
+                      <div key={idx} className="flex items-center gap-1 bg-background border border-border rounded-md pl-2 pr-1 h-8">
+                        <Input type="time" value={t} className="w-24 h-7 border-0 px-0"
+                          onChange={(e) => {
+                            const next = [...(form.recurrence?.times ?? [])]; next[idx] = e.target.value;
+                            setForm({ ...form, recurrence: { ...(form.recurrence!), times: next } });
+                          }} />
+                        <button type="button" onClick={() => {
+                          const next = (form.recurrence?.times ?? []).filter((_, i) => i !== idx);
+                          setForm({ ...form, recurrence: { ...(form.recurrence!), times: next } });
+                        }} className="text-muted-foreground hover:text-destructive"><Trash className="w-3 h-3" /></button>
+                      </div>
+                    ))}
+                    <Button type="button" size="sm" variant="outline" className="h-8 gap-1" onClick={() => setForm({ ...form, recurrence: { ...(form.recurrence!), times: [...(form.recurrence?.times ?? []), "09:00"] } })}>
+                      <Plus className="w-3 h-3" /> horário
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {form.recurrence?.mode && form.recurrence.mode !== "none" && (
-                <p className="text-[10px] text-muted-foreground mt-1">Ao concluir, uma nova ocorrência será agendada automaticamente.</p>
+                <div>
+                  <Label className="text-[10px] uppercase">Termina em (opcional)</Label>
+                  <Input type="date" value={form.recurrence?.end_date?.slice(0,10) ?? ""} onChange={(e) => setForm({ ...form, recurrence: { ...(form.recurrence!), end_date: e.target.value || null } })} className="h-9" />
+                  <p className="text-[10px] text-muted-foreground mt-2">Esta tarefa vira um <strong>template</strong>: novas ocorrências aparecem no Kanban automaticamente nos horários definidos.</p>
+                </div>
               )}
             </div>
           </div>
