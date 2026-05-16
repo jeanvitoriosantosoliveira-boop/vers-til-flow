@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import {
   TrendingUp, TrendingDown, Wallet, Sparkles, ArrowUpRight, ArrowDownRight,
   Plus, Trash2, FileDown, DollarSign, Building2, Users as UsersIcon, Receipt,
-  Home, Zap, Wifi, Briefcase, Code2, Megaphone, Tag
+  Home, Zap, Wifi, Briefcase, Code2, Megaphone, Tag, ArrowDownLeft, ArrowUpLeft
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer,
@@ -23,7 +23,7 @@ import {
 import type { Expense, ExpenseCategory, ExtraService } from "@/types";
 import { exportReportPdf } from "@/lib/exportPdf";
 
-const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: any; color: string }> = {
+const BUILTIN_CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
   rent:      { label: "Aluguel",       icon: Home,       color: "text-primary" },
   utilities: { label: "Água/Luz",      icon: Zap,        color: "text-warning" },
   internet:  { label: "Internet",      icon: Wifi,       color: "text-accent" },
@@ -33,16 +33,26 @@ const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: any; color: 
   tax:       { label: "Impostos",      icon: Receipt,    color: "text-destructive" },
   other:     { label: "Outros",        icon: Tag,        color: "text-muted-foreground" },
 };
+const FALLBACK_META = { label: "Outros", icon: Tag, color: "text-muted-foreground" };
 
 const BRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
 
 export default function Finance() {
   const {
-    currentUser, clients, users, expenses, extraServices, financeSettings,
-    createExpense, deleteExpense, createExtraService, deleteExtraService, updateFinanceSettings, updateUser,
+    currentUser, clients, users, expenses, extraServices, financeSettings, cashAdjustments,
+    createExpense, deleteExpense, createExtraService, deleteExtraService,
+    updateFinanceSettings, updateUser, addCustomCategory,
+    addCashAdjustment, deleteCashAdjustment,
   } = useApp();
 
   if (currentUser.role !== "leader") return <Navigate to="/" replace />;
+
+  // Catálogo de categorias = built-ins + customizadas do usuário
+  const CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
+    ...BUILTIN_CATEGORY_META,
+    ...Object.fromEntries((financeSettings.custom_categories ?? []).map(c => [c.key, { label: c.label, icon: Tag, color: "text-accent" }])),
+  };
+  const getMeta = (k: string) => CATEGORY_META[k] ?? FALLBACK_META;
 
   // ---------------- helpers ----------------
   const now = new Date();
@@ -114,11 +124,12 @@ export default function Finance() {
     ? ((currentMonth.revenue - sameMonthLastYear.revenue) / sameMonthLastYear.revenue) * 100
     : null;
 
-  // Caixa: saldo inicial + lucros históricos até hoje (incluindo mês atual)
+  // Caixa: saldo inicial + ajustes manuais + lucros históricos até hoje
   const cashCurrent = useMemo(() => {
     const past = monthlySeries.filter(m => m.key <= currentMonthKey);
-    return financeSettings.opening_balance + past.reduce((s,m) => s + m.profit, 0);
-  }, [monthlySeries, currentMonthKey, financeSettings.opening_balance]);
+    const adj = cashAdjustments.reduce((s,a) => s + a.amount, 0);
+    return financeSettings.opening_balance + adj + past.reduce((s,m) => s + m.profit, 0);
+  }, [monthlySeries, currentMonthKey, financeSettings.opening_balance, cashAdjustments]);
 
   // Categorias (mês atual)
   const expensesByCategory = useMemo(() => {
@@ -134,6 +145,10 @@ export default function Finance() {
   const [expForm, setExpForm] = useState<Partial<Expense>>({ category: "other", date: new Date().toISOString().slice(0,10), amount: 0 });
   const [svcOpen, setSvcOpen] = useState(false);
   const [svcForm, setSvcForm] = useState<Partial<ExtraService>>({ date: new Date().toISOString().slice(0,10), amount: 0 });
+  const [newCatLabel, setNewCatLabel] = useState("");
+  const [adjForm, setAdjForm] = useState<{ amount: number; reason: string; date: string; type: "in" | "out" }>({
+    amount: 0, reason: "", date: new Date().toISOString().slice(0,10), type: "in"
+  });
 
   function submitExpense() {
     if (!expForm.title?.trim() || !expForm.amount) return;
@@ -168,7 +183,7 @@ export default function Finance() {
             s.date, clients.find(c => c.id === s.client_id)?.name ?? "—", s.title, BRL(s.amount)]) },
         { title: "Despesas (mês)", head: ["Data","Categoria","Título","Valor"],
           rows: expenses.filter(e => monthKey(e.date) === currentMonthKey).map(e => [
-            e.date, CATEGORY_META[e.category].label, e.title, BRL(e.amount)]) },
+            e.date, getMeta(e.category).label, e.title, BRL(e.amount)]) },
         { title: "Folha de pagamento", head: ["Funcionário","Cargo","Salário","Imposto","Total"],
           rows: payrollBreakdown.map(p => [p.user.name, p.user.position ?? "—", BRL(p.salary), `${p.rate}% (${BRL(p.tax)})`, BRL(p.total)]) },
       ],
@@ -292,7 +307,7 @@ export default function Finance() {
               <p className="text-xs text-muted-foreground mb-4">{expensesByCategory.length} categoria(s)</p>
               <div className="space-y-3">
                 {expensesByCategory.map(([cat, val]) => {
-                  const meta = CATEGORY_META[cat];
+                  const meta = getMeta(cat);
                   const Icon = meta.icon;
                   const total = expensesByCategory.reduce((s,[,v]) => s+v, 0);
                   const pct = Math.round((val/total)*100);
@@ -375,7 +390,7 @@ export default function Finance() {
             <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
               {expenses.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Sem despesas lançadas.</p>}
               {[...expenses].sort((a,b) => b.date.localeCompare(a.date)).map(e => {
-                const meta = CATEGORY_META[e.category];
+                const meta = getMeta(e.category);
                 const Icon = meta.icon;
                 return (
                   <div key={e.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/40 group">
@@ -447,23 +462,91 @@ export default function Finance() {
 
         {/* SETTINGS */}
         <TabsContent value="settings" className="space-y-6">
-          <Card className="p-6 max-w-xl">
-            <h3 className="font-display font-semibold mb-4">Ajustes do financeiro</h3>
-            <div className="space-y-4">
-              <div>
-                <Label>Caixa inicial (R$)</Label>
-                <Input type="number" value={financeSettings.opening_balance}
-                  onChange={(e) => updateFinanceSettings({ opening_balance: +e.target.value })} />
-                <p className="text-xs text-muted-foreground mt-1">Saldo de partida usado para calcular o caixa atual.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="font-display font-semibold mb-4">Ajustes do financeiro</h3>
+              <div className="space-y-4">
+                <div>
+                  <Label>Caixa inicial (R$)</Label>
+                  <Input type="number" value={financeSettings.opening_balance}
+                    onChange={(e) => updateFinanceSettings({ opening_balance: +e.target.value })} />
+                  <p className="text-xs text-muted-foreground mt-1">Saldo de partida usado para calcular o caixa atual.</p>
+                </div>
+                <div>
+                  <Label>% Imposto/encargos padrão</Label>
+                  <Input type="number" value={financeSettings.default_tax_rate}
+                    onChange={(e) => updateFinanceSettings({ default_tax_rate: +e.target.value })} />
+                  <p className="text-xs text-muted-foreground mt-1">Aplicado quando um funcionário não tem alíquota própria.</p>
+                </div>
+                <div className="border-t border-border pt-4">
+                  <Label>Categorias personalizadas</Label>
+                  <div className="flex gap-2 mt-1 mb-3">
+                    <Input value={newCatLabel} onChange={(e) => setNewCatLabel(e.target.value)} placeholder="Ex: Cursos, Reuniões, Eventos…" />
+                    <Button type="button" variant="outline" onClick={() => { if (newCatLabel.trim()) { addCustomCategory(newCatLabel.trim()); setNewCatLabel(""); } }} className="gap-1"><Plus className="w-3 h-3" /> Add</Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(financeSettings.custom_categories ?? []).map(c => (
+                      <Badge key={c.key} variant="secondary" className="bg-accent/10 text-accent border-accent/20">
+                        <Tag className="w-3 h-3 mr-1" /> {c.label}
+                      </Badge>
+                    ))}
+                    {!(financeSettings.custom_categories?.length) && <p className="text-xs text-muted-foreground">Nenhuma categoria personalizada.</p>}
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>% Imposto/encargos padrão</Label>
-                <Input type="number" value={financeSettings.default_tax_rate}
-                  onChange={(e) => updateFinanceSettings({ default_tax_rate: +e.target.value })} />
-                <p className="text-xs text-muted-foreground mt-1">Aplicado quando um funcionário não tem alíquota própria.</p>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="font-display font-semibold mb-1">Movimentação manual de caixa</h3>
+              <p className="text-xs text-muted-foreground mb-4">Lance aportes, retiradas ou ajustes diretos no saldo.</p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="col-span-2">
+                  <Label>Motivo</Label>
+                  <Input value={adjForm.reason} onChange={(e) => setAdjForm({ ...adjForm, reason: e.target.value })} placeholder="Ex: Aporte sócio, retirada pró-labore" />
+                </div>
+                <div>
+                  <Label>Tipo</Label>
+                  <Select value={adjForm.type} onValueChange={(v) => setAdjForm({ ...adjForm, type: v as "in"|"out" })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="in">Entrada (+)</SelectItem>
+                      <SelectItem value="out">Saída (−)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Valor (R$)</Label>
+                  <Input type="number" value={adjForm.amount} onChange={(e) => setAdjForm({ ...adjForm, amount: +e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Data</Label>
+                  <Input type="date" value={adjForm.date} onChange={(e) => setAdjForm({ ...adjForm, date: e.target.value })} />
+                </div>
               </div>
-            </div>
-          </Card>
+              <Button className="w-full gap-2" onClick={() => {
+                if (!adjForm.amount || !adjForm.reason.trim()) return;
+                addCashAdjustment({ amount: adjForm.type === "in" ? adjForm.amount : -adjForm.amount, reason: adjForm.reason, date: adjForm.date });
+                setAdjForm({ amount: 0, reason: "", date: new Date().toISOString().slice(0,10), type: "in" });
+              }}><Plus className="w-3 h-3" /> Lançar movimentação</Button>
+
+              <div className="mt-5 space-y-1.5 max-h-72 overflow-y-auto">
+                {!cashAdjustments.length && <p className="text-xs text-muted-foreground text-center py-3">Nenhuma movimentação manual.</p>}
+                {cashAdjustments.map(a => (
+                  <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/40 group">
+                    {a.amount >= 0
+                      ? <ArrowDownLeft className="w-4 h-4 text-success" />
+                      : <ArrowUpLeft className="w-4 h-4 text-destructive" />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{a.reason}</p>
+                      <p className="text-[10px] text-muted-foreground">{a.date}</p>
+                    </div>
+                    <span className={`font-display font-bold tabular-nums ${a.amount >= 0 ? "text-success" : "text-destructive"}`}>{BRL(Math.abs(a.amount))}</span>
+                    <button onClick={() => deleteCashAdjustment(a.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -482,6 +565,7 @@ export default function Finance() {
                   {Object.entries(CATEGORY_META).map(([k, m]) => <SelectItem key={k} value={k}>{m.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">Crie novas categorias em <strong>Ajustes</strong>.</p>
             </div>
             <div><Label>Valor (R$)</Label><Input type="number" value={expForm.amount ?? 0} onChange={(e) => setExpForm({...expForm, amount: +e.target.value})} /></div>
             <div><Label>Data</Label><Input type="date" value={expForm.date ?? ""} onChange={(e) => setExpForm({...expForm, date: e.target.value})} /></div>
