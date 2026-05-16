@@ -3,7 +3,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { mockClients, mockComments, mockTasks, mockTimeEntries, mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
 import type {
   Client, Comment, Task, TaskStatus, TimeEntry, User,
-  KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings, Team, Recurrence
+  KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings, Team, CashAdjustment
 } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationsContext";
@@ -24,12 +24,14 @@ interface AppState {
   teamNotes: TeamNote[];
   financeSettings: FinanceSettings;
   teams: Team[];
+  cashAdjustments: CashAdjustment[];
   createTask: (t: Partial<Task>) => Promise<void>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   moveTask: (id: string, target: { status?: TaskStatus; column_id?: string | null }) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   createClient: (c: Partial<Client>) => Promise<void>;
   updateClient: (id: string, patch: Partial<Client>) => Promise<void>;
+  setClientSatisfaction: (id: string, value: number, note?: string) => void;
   addComment: (taskId: string, body: string) => Promise<void>;
   logTime: (input: { task_id: string; seconds: number; description?: string; logged_at?: string }) => Promise<void>;
   deleteTimeEntry: (id: string) => Promise<void>;
@@ -44,9 +46,15 @@ interface AppState {
   deleteTeamNote: (id: string) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   updateFinanceSettings: (patch: Partial<FinanceSettings>) => void;
+  addCustomCategory: (label: string) => string;
   createTeam: (t: Partial<Team>) => void;
   updateTeam: (id: string, patch: Partial<Team>) => void;
   deleteTeam: (id: string) => void;
+  addUserToTeam: (userId: string, teamId: string) => void;
+  removeUserFromTeam: (userId: string, teamId: string) => void;
+  addCashAdjustment: (a: Partial<CashAdjustment>) => void;
+  deleteCashAdjustment: (id: string) => void;
+  visibleTaskIds: () => Set<string>;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -59,8 +67,11 @@ const LS = {
   extraServices: "vd:extra_services",
   teamNotes: "vd:team_notes",
   finance: "vd:finance_settings",
-  users: "vd:users_v2",
+  users: "vd:users_v3",
   teams: "vd:teams",
+  cash: "vd:cash_adjustments",
+  clients: "vd:clients_v2",
+  tasks: "vd:tasks_v2",
 };
 
 const DEFAULT_COLUMNS: KanbanColumn[] = [
@@ -83,8 +94,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { push: pushNotif } = useNotifications();
 
   const [users, setUsers] = useState<User[]>(() => loadLS<User[]>(LS.users, mockUsers));
-  const [clients, setClients] = useState<Client[]>(mockClients);
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [clients, setClients] = useState<Client[]>(() => loadLS<Client[]>(LS.clients, mockClients));
+  const [tasks, setTasks] = useState<Task[]>(() => loadLS<Task[]>(LS.tasks, mockTasks));
   const [comments, setComments] = useState<Comment[]>(mockComments);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(mockTimeEntries);
   const [usingBackend, setUsingBackend] = useState(false);
@@ -95,9 +106,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [extraServices, setExtraServices] = useState<ExtraService[]>(() => loadLS<ExtraService[]>(LS.extraServices, mockExtraServices));
   const [teamNotes, setTeamNotes] = useState<TeamNote[]>(() => loadLS<TeamNote[]>(LS.teamNotes, []));
   const [financeSettings, setFinanceSettings] = useState<FinanceSettings>(() =>
-    loadLS<FinanceSettings>(LS.finance, { opening_balance: 25000, default_tax_rate: 32 })
+    loadLS<FinanceSettings>(LS.finance, { opening_balance: 25000, default_tax_rate: 32, custom_categories: [] })
   );
   const [teams, setTeams] = useState<Team[]>(() => loadLS<Team[]>(LS.teams, mockTeams));
+  const [cashAdjustments, setCashAdjustments] = useState<CashAdjustment[]>(() => loadLS<CashAdjustment[]>(LS.cash, []));
 
   useEffect(() => saveLS(LS.columns, columns), [columns]);
   useEffect(() => saveLS(LS.expenses, expenses), [expenses]);
@@ -106,6 +118,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => saveLS(LS.finance, financeSettings), [financeSettings]);
   useEffect(() => saveLS(LS.users, users), [users]);
   useEffect(() => saveLS(LS.teams, teams), [teams]);
+  useEffect(() => saveLS(LS.cash, cashAdjustments), [cashAdjustments]);
+  useEffect(() => saveLS(LS.clients, clients), [clients]);
+  useEffect(() => saveLS(LS.tasks, tasks), [tasks]);
 
   useEffect(() => {
     let cancelled = false;
