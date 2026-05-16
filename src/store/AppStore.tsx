@@ -148,7 +148,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  const currentUser = (user ?? users[0])!;
+  const authUser = (user ?? users[0])!;
+  const currentUser = users.find(u => u.id === authUser.id) ?? authUser;
 
   const createTask = useCallback(async (data: Partial<Task>) => {
     const newTask: Task = {
