@@ -21,6 +21,7 @@ import Finance from "./pages/Finance";
 import ReportDetail from "./pages/ReportDetail";
 import TimeTracking from "./pages/TimeTracking";
 import Login from "./pages/Login";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound.tsx";
 import type { ReactNode } from "react";
 
@@ -58,6 +59,7 @@ const App = () => (
                       <Route path="/teams" element={<Teams />} />
                       <Route path="/finance" element={<Finance />} />
                       <Route path="/time" element={<TimeTracking />} />
+                      <Route path="/profile" element={<Profile />} />
                     </Route>
                     <Route path="*" element={<NotFound />} />
                   </Routes>
