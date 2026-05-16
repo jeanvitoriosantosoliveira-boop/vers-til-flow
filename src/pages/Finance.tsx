@@ -307,7 +307,7 @@ export default function Finance() {
               <p className="text-xs text-muted-foreground mb-4">{expensesByCategory.length} categoria(s)</p>
               <div className="space-y-3">
                 {expensesByCategory.map(([cat, val]) => {
-                  const meta = CATEGORY_META[cat];
+                  const meta = getMeta(cat);
                   const Icon = meta.icon;
                   const total = expensesByCategory.reduce((s,[,v]) => s+v, 0);
                   const pct = Math.round((val/total)*100);
@@ -390,7 +390,7 @@ export default function Finance() {
             <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
               {expenses.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Sem despesas lançadas.</p>}
               {[...expenses].sort((a,b) => b.date.localeCompare(a.date)).map(e => {
-                const meta = CATEGORY_META[e.category];
+                const meta = getMeta(e.category);
                 const Icon = meta.icon;
                 return (
                   <div key={e.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/40 group">
