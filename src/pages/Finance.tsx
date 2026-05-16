@@ -183,7 +183,7 @@ export default function Finance() {
             s.date, clients.find(c => c.id === s.client_id)?.name ?? "—", s.title, BRL(s.amount)]) },
         { title: "Despesas (mês)", head: ["Data","Categoria","Título","Valor"],
           rows: expenses.filter(e => monthKey(e.date) === currentMonthKey).map(e => [
-            e.date, CATEGORY_META[e.category].label, e.title, BRL(e.amount)]) },
+            e.date, getMeta(e.category).label, e.title, BRL(e.amount)]) },
         { title: "Folha de pagamento", head: ["Funcionário","Cargo","Salário","Imposto","Total"],
           rows: payrollBreakdown.map(p => [p.user.name, p.user.position ?? "—", BRL(p.salary), `${p.rate}% (${BRL(p.tax)})`, BRL(p.total)]) },
       ],
