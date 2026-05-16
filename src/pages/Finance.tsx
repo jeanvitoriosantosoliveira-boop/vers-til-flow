@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import {
   TrendingUp, TrendingDown, Wallet, Sparkles, ArrowUpRight, ArrowDownRight,
   Plus, Trash2, FileDown, DollarSign, Building2, Users as UsersIcon, Receipt,
-  Home, Zap, Wifi, Briefcase, Code2, Megaphone, Tag
+  Home, Zap, Wifi, Briefcase, Code2, Megaphone, Tag, ArrowDownLeft, ArrowUpLeft
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer,
@@ -23,7 +23,7 @@ import {
 import type { Expense, ExpenseCategory, ExtraService } from "@/types";
 import { exportReportPdf } from "@/lib/exportPdf";
 
-const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: any; color: string }> = {
+const BUILTIN_CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
   rent:      { label: "Aluguel",       icon: Home,       color: "text-primary" },
   utilities: { label: "Água/Luz",      icon: Zap,        color: "text-warning" },
   internet:  { label: "Internet",      icon: Wifi,       color: "text-accent" },
@@ -33,16 +33,26 @@ const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: any; color: 
   tax:       { label: "Impostos",      icon: Receipt,    color: "text-destructive" },
   other:     { label: "Outros",        icon: Tag,        color: "text-muted-foreground" },
 };
+const FALLBACK_META = { label: "Outros", icon: Tag, color: "text-muted-foreground" };
 
 const BRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
 
 export default function Finance() {
   const {
-    currentUser, clients, users, expenses, extraServices, financeSettings,
-    createExpense, deleteExpense, createExtraService, deleteExtraService, updateFinanceSettings, updateUser,
+    currentUser, clients, users, expenses, extraServices, financeSettings, cashAdjustments,
+    createExpense, deleteExpense, createExtraService, deleteExtraService,
+    updateFinanceSettings, updateUser, addCustomCategory,
+    addCashAdjustment, deleteCashAdjustment,
   } = useApp();
 
   if (currentUser.role !== "leader") return <Navigate to="/" replace />;
+
+  // Catálogo de categorias = built-ins + customizadas do usuário
+  const CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
+    ...BUILTIN_CATEGORY_META,
+    ...Object.fromEntries((financeSettings.custom_categories ?? []).map(c => [c.key, { label: c.label, icon: Tag, color: "text-accent" }])),
+  };
+  const getMeta = (k: string) => CATEGORY_META[k] ?? FALLBACK_META;
 
   // ---------------- helpers ----------------
   const now = new Date();
@@ -114,11 +124,12 @@ export default function Finance() {
     ? ((currentMonth.revenue - sameMonthLastYear.revenue) / sameMonthLastYear.revenue) * 100
     : null;
 
-  // Caixa: saldo inicial + lucros históricos até hoje (incluindo mês atual)
+  // Caixa: saldo inicial + ajustes manuais + lucros históricos até hoje
   const cashCurrent = useMemo(() => {
     const past = monthlySeries.filter(m => m.key <= currentMonthKey);
-    return financeSettings.opening_balance + past.reduce((s,m) => s + m.profit, 0);
-  }, [monthlySeries, currentMonthKey, financeSettings.opening_balance]);
+    const adj = cashAdjustments.reduce((s,a) => s + a.amount, 0);
+    return financeSettings.opening_balance + adj + past.reduce((s,m) => s + m.profit, 0);
+  }, [monthlySeries, currentMonthKey, financeSettings.opening_balance, cashAdjustments]);
 
   // Categorias (mês atual)
   const expensesByCategory = useMemo(() => {
@@ -134,6 +145,10 @@ export default function Finance() {
   const [expForm, setExpForm] = useState<Partial<Expense>>({ category: "other", date: new Date().toISOString().slice(0,10), amount: 0 });
   const [svcOpen, setSvcOpen] = useState(false);
   const [svcForm, setSvcForm] = useState<Partial<ExtraService>>({ date: new Date().toISOString().slice(0,10), amount: 0 });
+  const [newCatLabel, setNewCatLabel] = useState("");
+  const [adjForm, setAdjForm] = useState<{ amount: number; reason: string; date: string; type: "in" | "out" }>({
+    amount: 0, reason: "", date: new Date().toISOString().slice(0,10), type: "in"
+  });
 
   function submitExpense() {
     if (!expForm.title?.trim() || !expForm.amount) return;
