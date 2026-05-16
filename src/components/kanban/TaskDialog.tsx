@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useApp } from "@/store/AppStore";
 import type { Task, TaskPriority, TaskStatus, RecurrenceMode } from "@/types";
-import { Trash2, Send, Plus, Clock, Trash, Repeat } from "lucide-react";
+import { Trash2, Send, Plus, Clock, Trash, Repeat, CalendarClock } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 
 interface Props {
@@ -30,7 +30,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
   useEffect(() => {
     if (editing) setForm(editing);
-    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id, column_id: defaultColumnId ?? null, recurrence: { mode: "none", interval: 1 } });
+    else setForm({ title: "", description: "", status: defaultStatus ?? "todo", priority: "medium", client_id: null, assignee_id: currentUser.id, column_id: defaultColumnId ?? null, recurrence: { mode: "none", interval: 1, times: ["09:00"] }, is_template: false });
   }, [editing, defaultStatus, defaultColumnId, currentUser.id, open]);
 
   const taskComments = editing ? comments.filter(c => c.task_id === editing.id) : [];
@@ -41,8 +41,15 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
   async function save() {
     if (!form.title?.trim()) return;
-    if (editing) await updateTask(editing.id, form);
-    else await createTask(form);
+    // Se a tarefa tem recorrência configurada e ainda não é template, marcamos como template
+    const payload: Partial<Task> = { ...form };
+    if (payload.recurrence && payload.recurrence.mode !== "none") {
+      payload.is_template = true;
+    } else {
+      payload.is_template = false;
+    }
+    if (editing) await updateTask(editing.id, payload);
+    else await createTask(payload);
     onOpenChange(false);
   }
 
