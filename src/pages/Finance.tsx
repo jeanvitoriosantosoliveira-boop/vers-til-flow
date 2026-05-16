@@ -565,6 +565,7 @@ export default function Finance() {
                   {Object.entries(CATEGORY_META).map(([k, m]) => <SelectItem key={k} value={k}>{m.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">Crie novas categorias em <strong>Ajustes</strong>.</p>
             </div>
             <div><Label>Valor (R$)</Label><Input type="number" value={expForm.amount ?? 0} onChange={(e) => setExpForm({...expForm, amount: +e.target.value})} /></div>
             <div><Label>Data</Label><Input type="date" value={expForm.date ?? ""} onChange={(e) => setExpForm({...expForm, date: e.target.value})} /></div>
