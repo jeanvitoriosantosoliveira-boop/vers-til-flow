@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network } from "lucide-react";
+import { Link } from "react-router-dom";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
 import { useApp } from "@/store/AppStore";
@@ -113,6 +114,12 @@ export function AppLayout() {
                     <span className="text-xs text-muted-foreground font-normal">{currentUser.email}</span>
                   </div>
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/profile" className="gap-2 cursor-pointer flex items-center">
+                    <UserCircle2 className="w-4 h-4" /> Meu perfil
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} className="gap-2 text-destructive focus:text-destructive">
                   <LogOut className="w-4 h-4" /> Sair
