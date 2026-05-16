@@ -106,7 +106,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [extraServices, setExtraServices] = useState<ExtraService[]>(() => loadLS<ExtraService[]>(LS.extraServices, mockExtraServices));
   const [teamNotes, setTeamNotes] = useState<TeamNote[]>(() => loadLS<TeamNote[]>(LS.teamNotes, []));
   const [financeSettings, setFinanceSettings] = useState<FinanceSettings>(() =>
-    loadLS<FinanceSettings>(LS.finance, { opening_balance: 25000, default_tax_rate: 32, custom_categories: [] })
+    loadLS<FinanceSettings>(LS.finance, { opening_balance: 250000, default_tax_rate: 32, custom_categories: [] })
   );
   const [teams, setTeams] = useState<Team[]>(() => loadLS<Team[]>(LS.teams, mockTeams));
   const [cashAdjustments, setCashAdjustments] = useState<CashAdjustment[]>(() => loadLS<CashAdjustment[]>(LS.cash, []));

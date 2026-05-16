@@ -1,0 +1,18 @@
+
+
+Nos periodos custom eu geralmente tento marcar de tal dia a tal dia mas ele não marca nada ele só fica com o dia de hoje em azul eu quero que fique em azul os que eu marcar e que os dados das telas se ajustem a esta data que seu selecionar no Periodo custom
+
+Quando logado em perfil de lider eu devo poder criar novas colunas no Kanban de tarefas e editar o nome das colunas
+
+Na tela de relatorios ao clicar ali no relatorio deve abrir para mim uma tela contendo os mesmos dados que teria no PDF mas de forma bonita uma tela com um design muito bom e nesta tela tem que ter também a opção de baixar o PDF
+
+Na tela de clientes, tem dados como Mensalidade de cliente e lucro estimados e mais coisas que não devem aparecer para o funcionario apenas para o lider, estes dados de valores e coisas mais importantes não devem aparecer para o funcionario apenas para o lider
+
+Na tela de Equipe eu devo poder ver também o que cada um faz, se é gestor de trafego, se é social media etc...
+
+Na tela de equipe, ao clicar na pessoa ali da equipe eu devo poder ver um hitorico de quais as tarefas ele lançou por ultimo, poder ver quais os clientes ele tem acesso, quantas horas lançadas em tarefas, como está o nivel de felicidade dos clientes dele, quero que tenha como eu fazer anotações a respeito deste funcionario, quanto é o salario do funcionario x e quanto é gasto a mais de imposto, pense em coisas legais para adicionar também
+
+quer que crie uma tela nova apenas para o lider, deverá ser a tela de Financeiro, esta tela deverá ter uma dashboard ou algo parecido com : 
+
+estimativa de faturamento para o proximo mês, quanto foi o faturamento dos meses anteriores nesta mesma data, e esses dados tem que ser corretos, opção de lançar gastos com titulo, descição e preço, por exemplo, camera, comprei uma camera nova, preço 2000, além desta opção de lançamento de custos, lançamento de serviços avulsos, e também deve ser calculado os salarios dos funcionarios e já descontado do valor do lucro da empresa
+quanto entrou, quanto saiu, quanto ficou, qual o caixa atual da empresa, preciso de um controle total do financeiro da empresa pense além das coisas que falei e me traga tudo o que for possivel de medir e lançar e calcular nesta nossa tela de contabilidade, quero estatisticas de crescimento de acordo com os meses anteriores, lançar o valor do aluguel, luz, agua, internet, essas coisas também devo poder fazer, relatorio de gastos etc... quero algo impecavel, 
