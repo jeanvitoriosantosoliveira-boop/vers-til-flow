@@ -115,7 +115,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => saveLS(LS.expenses, expenses), [expenses]);
   useEffect(() => saveLS(LS.extraServices, extraServices), [extraServices]);
   useEffect(() => saveLS(LS.teamNotes, teamNotes), [teamNotes]);
-  useEffect(() => saveLS(LS.finance, financeSettings), [financeSettings]);
+  useEffect(() => saveLS(LS.finance, financeSettings), [financeSettings]);  
   useEffect(() => saveLS(LS.users, users), [users]);
   useEffect(() => saveLS(LS.teams, teams), [teams]);
   useEffect(() => saveLS(LS.cash, cashAdjustments), [cashAdjustments]);
