@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { mockUsers } from "@/data/mock";
 import { LogIn, AlertCircle } from "lucide-react";
 
 export default function Login() {
@@ -19,20 +18,17 @@ export default function Login() {
   if (!ready) return null;
   if (user) return <Navigate to="/" replace />;
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setErr(null);
     setBusy(true);
-    const r = login(email, password);
+    const r = await login(email, password);
     setBusy(false);
     if (!r.ok) setErr(r.error ?? "Erro ao entrar");
   }
 
-  function quick(em: string, pw: string) {
-    setEmail(em); setPassword(pw); setErr(null);
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-background relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-background relative overflow-hidden">
       <div className="absolute inset-0 gradient-glow pointer-events-none" />
       <div className="w-full max-w-md relative">
         <div className="flex flex-col items-center gap-3 mb-8">
@@ -43,7 +39,7 @@ export default function Login() {
           </div>
         </div>
 
-        <Card className="p-6 shadow-lift">
+        <Card className="p-5 sm:p-6 shadow-lift">
           <form onSubmit={submit} className="space-y-4">
             <div>
               <Label htmlFor="email">E-mail</Label>
@@ -58,31 +54,10 @@ export default function Login() {
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {err}
               </div>
             )}
-            <Button type="submit" className="w-full gap-2" disabled={busy}>
-              <LogIn className="w-4 h-4" /> Entrar
+            <Button type="submit" className="w-full gap-2 h-11" disabled={busy}>
+              <LogIn className="w-4 h-4" /> {busy ? "Entrando..." : "Entrar"}
             </Button>
           </form>
-        </Card>
-
-        <Card className="mt-4 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Acessos de demonstração</p>
-          <div className="space-y-1.5">
-            {mockUsers.map(u => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => quick(u.email, u.password!)}
-                className="w-full flex items-center justify-between text-left text-xs px-3 py-2 rounded-lg hover:bg-muted transition"
-              >
-                <span>
-                  <span className="font-medium">{u.name}</span>{" "}
-                  <span className="text-muted-foreground">— {u.role === "leader" ? "👑 Líder" : u.is_manager ? "🛡️ Gerente" : "👤 Colaborador"}</span>
-                  <br />
-                  <span className="text-muted-foreground">{u.email} · senha: <code>{u.password}</code></span>
-                </span>
-              </button>
-            ))}
-          </div>
         </Card>
         <p className="text-[10px] text-muted-foreground/60 text-center mt-6">por ZailonSoft</p>
       </div>
