@@ -16,7 +16,8 @@ import Clients from "./pages/Clients";
 import ClientDetail from "./pages/ClientDetail";
 import Team from "./pages/Team";
 import TeamMemberDetail from "./pages/TeamMemberDetail";
-import Teams from "./pages/Teams";
+import TeamsDB from "./pages/TeamsDB";
+import Collaborators from "./pages/Collaborators";
 import Finance from "./pages/Finance";
 import ReportDetail from "./pages/ReportDetail";
 import TimeTracking from "./pages/TimeTracking";
@@ -56,7 +57,8 @@ const App = () => (
                       <Route path="/clients/:id" element={<ClientDetail />} />
                       <Route path="/team" element={<Team />} />
                       <Route path="/team/:id" element={<TeamMemberDetail />} />
-                      <Route path="/teams" element={<Teams />} />
+                      <Route path="/teams" element={<TeamsDB />} />
+                      <Route path="/collaborators" element={<Collaborators />} />
                       <Route path="/finance" element={<Finance />} />
                       <Route path="/time" element={<TimeTracking />} />
                       <Route path="/profile" element={<Profile />} />
