@@ -38,8 +38,8 @@ function Protected({ children }: { children: ReactNode }) {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
-      <NotificationsProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <NotificationsProvider>
           <AppStoreProvider>
             <SearchProvider>
               <TooltipProvider>
@@ -69,8 +69,8 @@ const App = () => (
               </TooltipProvider>
             </SearchProvider>
           </AppStoreProvider>
-        </AuthProvider>
-      </NotificationsProvider>
+        </NotificationsProvider>
+      </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

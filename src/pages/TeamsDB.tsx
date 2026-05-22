@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -34,7 +35,19 @@ export default function TeamsDB() {
     setProfiles((p.data as any) ?? []);
     setLoading(false);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const channel = supabase
+      .channel("teams-page-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const isAdmin = user?.is_manager || user?.is_leader;
 
