@@ -148,8 +148,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  const authUser = (user ?? users[0])!;
-  const currentUser = users.find(u => u.id === authUser.id) ?? authUser;
+  const authUserId = user?.id ?? users[0]?.id;
+  const fromList = users.find(u => u.id === authUserId);
+  const currentUser: User = fromList ?? (user
+    ? {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: (user.role === "collaborator" ? "employee" : user.role) as any,
+        avatar_url: user.avatar_url ?? null,
+        is_manager: user.is_manager,
+        team_ids: [],
+        team_id: null,
+      } as any
+    : users[0]);
 
   const createTask = useCallback(async (data: Partial<Task>) => {
     const newTask: Task = {
