@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2 } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
 import { useApp } from "@/store/AppStore";
@@ -17,6 +19,7 @@ const nav = [
   { to: "/reports", label: "Relatórios", icon: BarChart3 },
   { to: "/clients", label: "Clientes", icon: Users },
   { to: "/team", label: "Equipe", icon: UserCog, leaderOnly: true },
+  { to: "/collaborators", label: "Colaboradores", icon: UserPlus, leaderOnly: true },
   { to: "/teams", label: "Times", icon: Network, leaderOnly: true },
   { to: "/finance", label: "Financeiro", icon: Wallet, leaderOnly: true },
   { to: "/time", label: "Tempo", icon: Timer },
@@ -29,6 +32,7 @@ export function AppLayout() {
   const { query, setQuery } = useSearch();
   const location = useLocation();
   const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Mostrar busca apenas onde faz sentido (Kanban e Clientes)
   const showSearch = location.pathname === "/kanban" || location.pathname === "/clients";
@@ -37,9 +41,8 @@ export function AppLayout() {
     if (e.key === "Enter" && query.trim()) navigate("/kanban");
   }
 
-  return (
-    <div className="min-h-screen flex bg-background text-foreground">
-      <aside className="w-64 border-r border-sidebar-border bg-sidebar shrink-0 flex flex-col py-6 px-4">
+  const SidebarContent = (
+    <>
         <div className="flex items-center gap-3 px-2 mb-8">
           <Logo size={36} />
           <div>
@@ -54,6 +57,7 @@ export function AppLayout() {
               key={to}
               to={to}
               end={end}
+              onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 `group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   isActive
@@ -75,10 +79,25 @@ export function AppLayout() {
           </div>
           <p className="text-[10px] text-muted-foreground/60 px-2 mt-2">por ZailonSoft</p>
         </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen flex bg-background text-foreground">
+      <aside className="hidden lg:flex w-64 border-r border-sidebar-border bg-sidebar shrink-0 flex-col py-6 px-4">
+        {SidebarContent}
       </aside>
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-72 bg-sidebar p-4 flex flex-col">
+          {SidebarContent}
+        </SheetContent>
+      </Sheet>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between px-6 gap-4">
+        <header className="h-16 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 gap-2 sm:gap-4">
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)}>
+            <Menu className="w-5 h-5" />
+          </Button>
           <div className="flex-1 max-w-sm">
             {showSearch && (
               <div className="relative">
@@ -93,7 +112,7 @@ export function AppLayout() {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Badge variant="outline" className="hidden md:inline-flex gap-1 border-accent/40 text-accent">
               <Sparkles className="w-3 h-3" /> {currentUser.role === "leader" ? "Líder" : currentUser.is_manager ? "Gerente" : "Colaborador"}
             </Badge>
@@ -129,7 +148,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main key={location.pathname} className="flex-1 p-6 lg:p-8 animate-fade-in">
+        <main key={location.pathname} className="flex-1 p-0 sm:p-2 lg:p-8 animate-fade-in">
           <Outlet />
         </main>
       </div>
