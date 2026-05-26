@@ -54,6 +54,7 @@ export interface Client {
   satisfaction_history?: SatisfactionEntry[];
   health?: "great" | "good" | "warning" | "risk";
   services?: string[];
+  logo_url?: string | null;
   notes?: string | null;
   status: "active" | "paused" | "archived";
   created_at: string;

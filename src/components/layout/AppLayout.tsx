@@ -12,6 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useSearch } from "@/context/SearchContext";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { UserAvatar } from "@/components/UserAvatar";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -129,9 +130,7 @@ export function AppLayout() {
             <NotificationsBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold shadow-glow hover:scale-105 transition">
-                  {currentUser.name.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                </button>
+                <UserAvatar name={currentUser.name} avatarUrl={currentUser.avatar_url} className="w-9 h-9 shadow-glow hover:scale-105 transition" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>

@@ -4,6 +4,7 @@ import { useApp } from "@/store/AppStore";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, MessageSquare, Timer } from "lucide-react";
 import { formatSeconds, relativeDue } from "@/lib/format";
+import { UserAvatar } from "@/components/UserAvatar";
 
 const priorityStyle: Record<Task["priority"], string> = {
   low: "bg-muted text-muted-foreground",
@@ -51,9 +52,7 @@ export function TaskCard({ task, onClick }: { task: Task; onClick: () => void })
             {taskComments > 0 && <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" /> {taskComments}</span>}
           </div>
           {assignee && (
-            <div className="w-6 h-6 rounded-full gradient-primary flex items-center justify-center text-[10px] font-semibold text-primary-foreground" title={assignee.name}>
-              {assignee.name.split(" ").map(n => n[0]).slice(0, 2).join("")}
-            </div>
+            <UserAvatar name={assignee.name} avatarUrl={assignee.avatar_url} className="w-6 h-6" fallbackClassName="text-[10px]" />
           )}
         </div>
       </div>

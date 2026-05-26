@@ -16,6 +16,8 @@ import {
 import { formatSeconds, formatDate } from "@/lib/format";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { exportReportPdf } from "@/lib/exportPdf";
+import { UserAvatar } from "@/components/UserAvatar";
+import { ClientAvatar } from "@/components/ClientAvatar";
 import { toast } from "sonner";
 
 type ClientLink = { id: string; client_id: string; source: string };
@@ -40,11 +42,30 @@ export default function TeamMemberDetail() {
 
   async function loadClientLinks() {
     if (!id) return;
-    const { data } = await supabase.from("client_collaborators").select("id,client_id,source").eq("user_id", id);
+    const { data, error } = await supabase.from("client_collaborators").select("id,client_id,source").eq("user_id", id);
+    if (error && (error.code === "PGRST205" || String(error.message).includes("404"))) {
+      // Tabela ainda não criada — fallback via times
+      const memberUser = users.find(u => u.id === id);
+      const teamIds = memberUser?.team_ids ?? (memberUser?.team_id ? [memberUser.team_id] : []);
+      if (teamIds.length) {
+        const { data: ct } = await supabase.from("client_teams").select("client_id,team_id").in("team_id", teamIds);
+        setClientLinks((ct ?? []).map((r: any) => ({ id: `${r.client_id}-${r.team_id}`, client_id: r.client_id, source: "team" })));
+      }
+      return;
+    }
     setClientLinks((data as ClientLink[]) ?? []);
   }
 
-  useEffect(() => { loadClientLinks(); }, [id]);
+  useEffect(() => {
+    loadClientLinks();
+    const ch = supabase
+      .channel(`member-clients-${id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "client_collaborators" }, () => loadClientLinks())
+      .on("postgres_changes", { event: "*", schema: "public", table: "client_teams" }, () => loadClientLinks())
+      .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, () => loadClientLinks())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [id]);
 
   if (!member) return (
     <div className="max-w-3xl mx-auto py-12 text-center">
@@ -113,7 +134,12 @@ export default function TeamMemberDetail() {
       user_id: member!.id,
       source: "manual",
     });
-    if (error) return toast.error(error.message);
+    if (error) {
+      if (error.code === "PGRST205" || String(error.message).includes("404")) {
+        return toast.error("Tabela 'client_collaborators' não encontrada. Execute supabase/scripts/setup_missing_tables.sql no Supabase.");
+      }
+      return toast.error(error.message);
+    }
     toast.success("Cliente vinculado");
     loadClientLinks();
   }
@@ -165,9 +191,7 @@ export default function TeamMemberDetail() {
         <div className="absolute inset-0 gradient-glow opacity-50 pointer-events-none" />
         <div className="relative flex items-start justify-between gap-6 flex-wrap">
           <div className="flex items-start gap-5">
-            <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center text-2xl font-display font-bold text-primary-foreground shadow-glow">
-              {member.name.split(" ").map(n => n[0]).slice(0,2).join("")}
-            </div>
+            <UserAvatar name={member.name} avatarUrl={member.avatar_url} className="w-16 h-16" fallbackClassName="text-2xl font-display font-bold" />
             <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="font-display text-3xl font-bold tracking-tight">{member.name}</h1>
@@ -285,7 +309,7 @@ export default function TeamMemberDetail() {
               const link = clientLinks.find(l => l.client_id === c.id);
               return (
                 <div key={c.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50">
-                  <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">{c.name.charAt(0)}</div>
+                  <ClientAvatar name={c.name} logoUrl={c.logo_url} className="w-8 h-8" />
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigate(`/clients/${c.id}`)}>
                     <p className="text-sm font-medium truncate">{c.name}</p>
                     {link?.source === "team" && <p className="text-[10px] text-muted-foreground">Via time</p>}

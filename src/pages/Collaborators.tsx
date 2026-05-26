@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { Plus, UserPlus, Shield, Crown, Trash2 } from "lucide-react";
+import { UserAvatar } from "@/components/UserAvatar";
 
 type Profile = {
   id: string; name: string; email: string; avatar_url: string | null;
@@ -106,10 +106,7 @@ export default function Collaborators() {
             const r = roleOf(p.id);
             return (
               <Card key={p.id} className="p-4 flex items-start gap-3">
-                <Avatar className="w-12 h-12">
-                  <AvatarImage src={p.avatar_url ?? undefined} />
-                  <AvatarFallback>{p.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
+                <UserAvatar name={p.name} avatarUrl={p.avatar_url} className="w-12 h-12" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold truncate">{p.name}</p>
@@ -167,7 +164,10 @@ function NewCollaboratorDialog({
 
   return (
     <DialogContent className="max-w-lg">
-      <DialogHeader><DialogTitle>Novo colaborador</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>Novo colaborador</DialogTitle>
+        <DialogDescription>Preencha os dados para criar um novo membro da equipe.</DialogDescription>
+      </DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><Label>Nome*</Label><Input value={name} onChange={e => setName(e.target.value)} required /></div>

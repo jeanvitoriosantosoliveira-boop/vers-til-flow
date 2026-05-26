@@ -13,6 +13,7 @@ import type { Client } from "@/types";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 import { useSearch } from "@/context/SearchContext";
 import { CLIENT_STATUS_LABEL } from "@/lib/clientStatus";
+import { ClientAvatar } from "@/components/ClientAvatar";
 
 function contractInfo(c: Client) {
   if (!c.contract_end) return null;
@@ -106,9 +107,7 @@ export default function Clients() {
             <Card key={c.id} onClick={() => navigate(`/clients/${c.id}`)} className="p-5 hover:shadow-lift hover:-translate-y-0.5 hover:border-accent/40 transition-all cursor-pointer group">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg gradient-primary flex items-center justify-center text-primary-foreground font-semibold shadow-glow">
-                    {c.name.charAt(0)}
-                  </div>
+                  <ClientAvatar name={c.name} logoUrl={c.logo_url} className="w-10 h-10 shadow-glow" />
                   <div>
                     <h3 className="font-semibold leading-tight">{c.name}</h3>
                     {c.company && <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Building2 className="w-3 h-3" /> {c.company}</p>}

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Briefcase, Trash2, Pencil } from "lucide-react";
@@ -17,7 +17,7 @@ type Service = {
   id: string;
   name: string;
   description: string | null;
-  default_price: number;
+  default_price: number | null;
   is_active: boolean;
 };
 
@@ -33,7 +33,13 @@ export default function Services() {
   async function load() {
     setLoading(true);
     const { data, error } = await supabase.from("services").select("*").order("name");
-    if (error) toast.error(error.message);
+    if (error) {
+      if (error.code === "PGRST205" || error.message.includes("404")) {
+        toast.error("Tabela 'services' não encontrada. Execute o script SQL em supabase/scripts/setup_missing_tables.sql");
+      } else {
+        toast.error(error.message);
+      }
+    }
     setServices((data as any) ?? []);
     setLoading(false);
   }
@@ -95,9 +101,11 @@ export default function Services() {
                   {!s.is_active && <Badge variant="outline" className="text-[10px]">Inativo</Badge>}
                 </div>
                 {s.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{s.description}</p>}
-                <p className="text-sm font-semibold tabular-nums mt-2">
-                  R$ {Number(s.default_price).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                </p>
+                {s.default_price != null && (
+                  <p className="text-sm font-semibold tabular-nums mt-2">
+                    R$ {Number(s.default_price).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </p>
+                )}
               </div>
               {isAdmin && (
                 <div className="flex gap-1 shrink-0">
@@ -120,23 +128,26 @@ export default function Services() {
 function ServiceDialog({ initial, onSaved }: { initial: Service | null; onSaved: () => void }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [defaultPrice, setDefaultPrice] = useState(initial?.default_price ?? 0);
+  const [defaultPrice, setDefaultPrice] = useState(
+    initial?.default_price != null ? String(initial.default_price) : ""
+  );
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setName(initial?.name ?? "");
     setDescription(initial?.description ?? "");
-    setDefaultPrice(initial?.default_price ?? 0);
+    setDefaultPrice(initial?.default_price != null ? String(initial.default_price) : "");
   }, [initial]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
+    const priceTrim = defaultPrice.trim();
     const payload = {
       name: name.trim(),
       description: description.trim() || null,
-      default_price: defaultPrice,
+      default_price: priceTrim === "" ? null : Number(priceTrim),
       is_active: true,
     };
     const { error } = initial
@@ -152,11 +163,22 @@ function ServiceDialog({ initial, onSaved }: { initial: Service | null; onSaved:
     <DialogContent>
       <DialogHeader>
         <DialogTitle>{initial ? "Editar serviço" : "Novo serviço"}</DialogTitle>
+        <DialogDescription>Cadastre um serviço oferecido pela agência. O preço é opcional.</DialogDescription>
       </DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div><Label>Nome*</Label><Input value={name} onChange={e => setName(e.target.value)} required /></div>
         <div><Label>Descrição</Label><Textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} /></div>
-        <div><Label>Preço padrão (R$)</Label><Input type="number" min={0} step={0.01} value={defaultPrice} onChange={e => setDefaultPrice(+e.target.value)} /></div>
+        <div>
+          <Label>Preço padrão (R$) — opcional</Label>
+          <Input
+            type="number"
+            min={0}
+            step={0.01}
+            placeholder="Deixe vazio se não houver preço fixo"
+            value={defaultPrice}
+            onChange={e => setDefaultPrice(e.target.value)}
+          />
+        </div>
         <DialogFooter>
           <Button type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</Button>
         </DialogFooter>

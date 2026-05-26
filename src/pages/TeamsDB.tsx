@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Users2, Trash2 } from "lucide-react";
@@ -228,7 +228,10 @@ function NewTeamDialog({ onCreated }: { onCreated: () => void }) {
 
   return (
     <DialogContent>
-      <DialogHeader><DialogTitle>Novo time</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>Novo time</DialogTitle>
+        <DialogDescription>Crie um time e depois adicione membros e clientes vinculados.</DialogDescription>
+      </DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div><Label>Nome*</Label><Input value={name} onChange={e => setName(e.target.value)} required /></div>
         <div><Label>Descrição</Label><Input value={description} onChange={e => setDescription(e.target.value)} /></div>

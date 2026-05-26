@@ -11,6 +11,8 @@ import {
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
 import { relativeDue, formatSeconds } from "@/lib/format";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
+import { UserAvatar } from "@/components/UserAvatar";
+import { ClientAvatar } from "@/components/ClientAvatar";
 
 export default function Dashboard() {
   const { tasks, clients, users, timeEntries, currentUser } = useApp();
@@ -265,9 +267,7 @@ export default function Dashboard() {
               {topPerformer ? (
                 <>
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-glow">
-                      {topPerformer.user.name.split(" ").map(n => n[0]).slice(0,2).join("")}
-                    </div>
+                    <UserAvatar name={topPerformer.user.name} avatarUrl={topPerformer.user.avatar_url} className="w-14 h-14" fallbackClassName="text-lg font-bold" />
                     <div>
                       <p className="font-display text-lg font-bold leading-tight">{topPerformer.user.name}</p>
                       <p className="text-xs text-muted-foreground">{topPerformer.done} entregas · {formatSeconds(topPerformer.seconds)}</p>
@@ -293,7 +293,7 @@ export default function Dashboard() {
               {clientsAtRisk.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">Tudo sob controle ✨</p>}
               {clientsAtRisk.map(({ c, hours, target, pct, over }) => (
                 <button key={c.id} onClick={() => navigate(`/clients/${c.id}`)} className="w-full text-left flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition group">
-                  <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">{c.name.charAt(0)}</div>
+                  <ClientAvatar name={c.name} logoUrl={c.logo_url} className="w-9 h-9" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{c.name}</p>
                     <div className="flex items-center gap-2 mt-1">

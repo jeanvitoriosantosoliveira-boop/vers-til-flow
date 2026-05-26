@@ -10,6 +10,7 @@ import { Save, User as UserIcon, Mail, Phone, Cake, MapPin, Sparkles, Briefcase,
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export default function Profile() {
   const { user, refresh } = useAuth();
@@ -94,11 +95,12 @@ export default function Profile() {
         <Card className="p-6 lg:col-span-1 relative overflow-hidden">
           <div className="absolute inset-0 gradient-glow opacity-50 pointer-events-none" />
           <div className="relative flex flex-col items-center text-center">
-            <div className="w-28 h-28 rounded-3xl overflow-hidden gradient-primary flex items-center justify-center text-4xl font-display font-bold text-primary-foreground shadow-glow mb-4">
-              {draft.avatar_url
-                ? <img src={draft.avatar_url} alt={draft.name ?? ""} className="w-full h-full object-cover" />
-                : (draft.name ?? user.name ?? "?").split(" ").map((n: string) => n[0]).slice(0,2).join("")}
-            </div>
+            <UserAvatar
+              name={draft.name ?? user.name ?? "?"}
+              avatarUrl={draft.avatar_url}
+              className="w-28 h-28 rounded-3xl mb-4 shadow-glow"
+              fallbackClassName="text-4xl font-display font-bold rounded-3xl"
+            />
             <h2 className="font-display text-xl font-bold">{draft.name ?? user.name}</h2>
             <p className="text-xs text-muted-foreground">{user.email}</p>
             <Badge variant="outline" className="mt-2 gap-1 border-accent/40 text-accent">

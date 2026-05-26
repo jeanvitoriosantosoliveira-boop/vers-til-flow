@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatSeconds } from "@/lib/format";
 import { ChevronRight, Briefcase } from "lucide-react";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export default function Team() {
   const { users, tasks, currentUser } = useApp();
@@ -33,9 +34,7 @@ export default function Team() {
           <Card key={u.id} onClick={() => navigate(`/team/${u.id}`)} className="p-6 hover:shadow-lift hover:-translate-y-0.5 hover:border-accent/40 transition-all cursor-pointer group">
             <div className="flex items-start justify-between mb-5">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-semibold shadow-glow">
-                  {u.name.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                </div>
+                <UserAvatar name={u.name} avatarUrl={u.avatar_url} className="w-12 h-12" />
                 <div>
                   <h3 className="font-semibold">{u.name}</h3>
                   {u.position && (

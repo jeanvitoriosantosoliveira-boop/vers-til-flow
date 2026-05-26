@@ -11,6 +11,8 @@ import { useNavigate } from "react-router-dom";
 import { formatSeconds, formatDate } from "@/lib/format";
 import { exportReportPdf } from "@/lib/exportPdf";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
+import { UserAvatar } from "@/components/UserAvatar";
+import { ClientAvatar } from "@/components/ClientAvatar";
 
 type Tab = "clients" | "tasks" | "team";
 
@@ -209,7 +211,7 @@ export default function Reports() {
                     <tr key={r.c.id} className="border-t border-border hover:bg-muted/30 transition">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">{r.c.name.charAt(0)}</div>
+                          <ClientAvatar name={r.c.name} logoUrl={r.c.logo_url} className="w-8 h-8" />
                           <div>
                             <p className="font-medium">{r.c.name}</p>
                             <p className="text-xs text-muted-foreground">{r.c.company ?? "—"}</p>
@@ -300,7 +302,7 @@ export default function Reports() {
                   <tr key={r.u.id} className="border-t border-border hover:bg-muted/30 transition">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">{r.u.name.split(" ").map(n=>n[0]).slice(0,2).join("")}</div>
+                        <UserAvatar name={r.u.name} avatarUrl={r.u.avatar_url} className="w-8 h-8" />
                         <div>
                           <p className="font-medium">{r.u.name}</p>
                           <p className="text-xs text-muted-foreground">{r.u.email}</p>

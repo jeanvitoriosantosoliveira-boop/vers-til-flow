@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Trash2, Crown, Users as UsersIcon, Edit3 } from "lucide-react";
 import type { Team } from "@/types";
+import { UserAvatar } from "@/components/UserAvatar";
 
 const COLORS = ["bg-primary","bg-accent","bg-success","bg-warning","bg-destructive"];
 
@@ -79,9 +80,7 @@ export default function Teams() {
               <div className="space-y-1.5">
                 {members.map(m => (
                   <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                    <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">
-                      {m.name.split(" ").map(n => n[0]).slice(0,2).join("")}
-                    </div>
+                    <UserAvatar name={m.name} avatarUrl={m.avatar_url} className="w-8 h-8" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{m.name}</p>
                       <p className="text-[10px] text-muted-foreground truncate">{m.position}</p>
@@ -124,9 +123,7 @@ export default function Teams() {
             <div className="space-y-1.5">
               {orphans.map(u => (
                 <div key={u.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                  <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">
-                    {u.name.split(" ").map(n => n[0]).slice(0,2).join("")}
-                  </div>
+                  <UserAvatar name={u.name} avatarUrl={u.avatar_url} className="w-8 h-8" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{u.name}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{u.position}</p>

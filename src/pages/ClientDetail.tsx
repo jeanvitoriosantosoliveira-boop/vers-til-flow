@@ -8,13 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Building2, Mail, Phone, Calendar, DollarSign, Clock, Star, Save, Heart, FileDown, AlertTriangle, CheckCircle2, Sparkles, Edit3 } from "lucide-react";
+import { ArrowLeft, Building2, Mail, Phone, Calendar, DollarSign, Clock, Star, Save, Heart, FileDown, AlertTriangle, CheckCircle2, Sparkles, Edit3, Trash2, Upload, Plus, X } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 import type { Client } from "@/types";
 import { exportReportPdf } from "@/lib/exportPdf";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { CLIENT_STATUS_LABEL, CLIENT_STATUS_OPTIONS } from "@/lib/clientStatus";
+import { ClientAvatar } from "@/components/ClientAvatar";
+import { UserAvatar } from "@/components/UserAvatar";
+import { toast } from "sonner";
 
 const healthMap = {
   great:   { label: "Excelente", color: "text-success", bg: "bg-success/15", bar: "bg-success" },
@@ -26,10 +29,12 @@ const healthMap = {
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { clients, tasks, users, timeEntries, currentUser, updateClient, setClientSatisfaction } = useApp();
+  const { clients, tasks, users, timeEntries, currentUser, updateClient, deleteClient, setClientSatisfaction } = useApp();
   const client = clients.find(c => c.id === id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
+  const [serviceInput, setServiceInput] = useState("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [linkedServices, setLinkedServices] = useState<{ id: string; service_id: string; monthly_price: number; service?: { name: string } }[]>([]);
   const [catalogServices, setCatalogServices] = useState<{ id: string; name: string }[]>([]);
   const [involvedUsers, setInvolvedUsers] = useState<{ id: string; user_id: string; source: string; profile?: { id: string; name: string; position?: string | null } }[]>([]);
@@ -89,7 +94,7 @@ export default function ClientDetail() {
     const [svcLinksRes, svcRes, invRes] = await Promise.all([
       supabase.from("client_services").select("id,service_id,monthly_price,service:services(name)").eq("client_id", client.id),
       supabase.from("services").select("id,name").eq("is_active", true).order("name"),
-      supabase.from("client_collaborators").select("id,user_id,source,profile:profiles(id,name,position)").eq("client_id", client.id),
+      supabase.from("client_collaborators").select("id,user_id,source,profile:profiles(id,name,position,avatar_url)").eq("client_id", client.id),
     ]);
     setLinkedServices((svcLinksRes.data as any) ?? []);
     setCatalogServices((svcRes.data as any) ?? []);
@@ -119,6 +124,48 @@ export default function ClientDetail() {
 
   function startEdit() { setDraft(client!); setEditing(true); }
   function saveEdit() { updateClient(client!.id, draft); setEditing(false); }
+
+  async function uploadLogo(file: File) {
+    if (!isLeader || !client) return;
+    setUploadingLogo(true);
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `${client.id}/logo-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("client-logos").upload(path, file, { upsert: true });
+    if (upErr) {
+      setUploadingLogo(false);
+      return toast.error(upErr.message);
+    }
+    const { data } = supabase.storage.from("client-logos").getPublicUrl(path);
+    await updateClient(client.id, { logo_url: data.publicUrl });
+    setDraft(d => ({ ...d, logo_url: data.publicUrl }));
+    setUploadingLogo(false);
+    toast.success("Logo atualizada");
+  }
+
+  async function removeClient() {
+    if (!isLeader || !client) return;
+    if (!confirm(`Remover "${client.name}" e todas as tarefas vinculadas? Esta ação é permanente.`)) return;
+    await deleteClient(client.id);
+    navigate("/clients");
+  }
+
+  function addServiceTag(name: string, toDraft = false) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const current = toDraft ? (draft.services ?? client!.services ?? []) : (client!.services ?? []);
+    if (current.includes(trimmed)) return;
+    const next = [...current, trimmed];
+    if (toDraft) setDraft(d => ({ ...d, services: next }));
+    else updateClient(client!.id, { services: next });
+    setServiceInput("");
+  }
+
+  function removeServiceTag(name: string, toDraft = false) {
+    const current = toDraft ? (draft.services ?? []) : (client!.services ?? []);
+    const next = current.filter(s => s !== name);
+    if (toDraft) setDraft(d => ({ ...d, services: next }));
+    else updateClient(client!.id, { services: next });
+  }
 
   function exportPdf() {
     exportReportPdf({
@@ -161,8 +208,15 @@ export default function ClientDetail() {
         <div className="absolute inset-0 gradient-glow opacity-50 pointer-events-none" />
         <div className="relative flex items-start justify-between gap-6 flex-wrap">
           <div className="flex items-start gap-5">
-            <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center text-2xl font-display font-bold text-primary-foreground shadow-glow">
-              {client.name.charAt(0)}
+            <div className="relative">
+              <ClientAvatar name={client.name} logoUrl={client.logo_url ?? draft.logo_url} className="w-16 h-16 text-2xl" fallbackClassName="text-2xl font-display font-bold" />
+              {isLeader && (
+                <label className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-background border border-border flex items-center justify-center cursor-pointer hover:bg-muted">
+                  <Upload className="w-3.5 h-3.5" />
+                  <input type="file" accept="image/*" className="hidden" disabled={uploadingLogo}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = ""; }} />
+                </label>
+              )}
             </div>
             <div>
               <div className="flex items-center gap-3 flex-wrap">
@@ -182,7 +236,12 @@ export default function ClientDetail() {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={exportPdf} className="gap-2"><FileDown className="w-4 h-4" /> Exportar PDF</Button>
-            {isLeader && !editing && <Button onClick={startEdit} className="gap-2"><Edit3 className="w-4 h-4" /> Editar dados</Button>}
+            {isLeader && !editing && (
+              <>
+                <Button onClick={startEdit} className="gap-2"><Edit3 className="w-4 h-4" /> Editar dados</Button>
+                <Button variant="destructive" onClick={removeClient} className="gap-2"><Trash2 className="w-4 h-4" /> Remover</Button>
+              </>
+            )}
             {isLeader && editing && <Button onClick={saveEdit} className="gap-2"><Save className="w-4 h-4" /> Salvar</Button>}
           </div>
         </div>
@@ -295,11 +354,14 @@ export default function ClientDetail() {
           <h3 className="font-display font-semibold mb-1">Serviços contratados</h3>
           <p className="text-xs text-muted-foreground mb-4">{linkedServices.length || (client.services ?? []).length} ativos</p>
           <div className="flex flex-wrap gap-2">
-            {(linkedServices.length ? linkedServices.map(s => ({ id: s.id, name: s.service?.name ?? "Serviço" })) : (client.services ?? []).map(s => ({ id: s, name: s }))).map(s => (
+            {(linkedServices.length ? linkedServices.map(s => ({ id: s.id, name: s.service?.name ?? "Serviço", fromDb: true })) : (client.services ?? []).map(s => ({ id: s, name: s, fromDb: false }))).map(s => (
               <Badge key={s.id} variant="secondary" className="bg-accent/10 text-accent border-accent/20 gap-1">
                 {s.name}
-                {isLeader && linkedServices.some(ls => ls.id === s.id) && (
-                  <button onClick={() => unlinkService(s.id, s.name)} className="ml-1 opacity-70 hover:opacity-100">×</button>
+                {isLeader && (
+                  <button
+                    onClick={() => s.fromDb ? unlinkService(s.id, s.name) : removeServiceTag(s.name)}
+                    className="ml-1 opacity-70 hover:opacity-100"
+                  >×</button>
                 )}
               </Badge>
             ))}
@@ -307,9 +369,26 @@ export default function ClientDetail() {
           </div>
           {isLeader && catalogServices.length > 0 && (
             <select className="w-full mt-3 text-xs px-2 py-1.5 rounded-md border bg-background" defaultValue="" onChange={(e) => { if (e.target.value) { linkService(e.target.value); e.target.value = ""; } }}>
-              <option value="">+ Vincular serviço...</option>
+              <option value="">+ Vincular do catálogo...</option>
               {catalogServices.filter(s => !linkedServices.some(ls => ls.service_id === s.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+          )}
+          {isLeader && (
+            <div className="mt-3">
+              <Label className="text-xs">Adicionar serviço (Enter para incluir)</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  value={serviceInput}
+                  onChange={(e) => setServiceInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addServiceTag(serviceInput, editing); } }}
+                  placeholder="Ex: Social Media"
+                  className="text-sm"
+                />
+                <Button type="button" size="icon" variant="outline" onClick={() => addServiceTag(serviceInput, editing)}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
           )}
 
           <div className="border-t border-border my-4" />
@@ -317,9 +396,7 @@ export default function ClientDetail() {
           <div className="space-y-2">
             {(involvedUsers.length ? involvedUsers.map(i => ({ user: i.profile as any, seconds: 0, source: i.source })) : byUser.map(i => ({ ...i, source: "task" }))).map(({ user, seconds, source }: any) => (
               <div key={user!.id} className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center text-[10px] font-semibold text-primary-foreground">
-                  {user!.name.split(" ").map(n => n[0]).slice(0,2).join("")}
-                </div>
+                <UserAvatar name={user!.name} avatarUrl={user!.avatar_url} className="w-7 h-7" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm truncate">{user!.name}</p>
                   <p className="text-[10px] text-muted-foreground truncate">{user!.position ?? "Colaborador"} {source === "team" ? "· via time" : ""}</p>
@@ -327,7 +404,7 @@ export default function ClientDetail() {
                 {seconds > 0 && <span className="text-xs tabular-nums text-muted-foreground">{formatSeconds(seconds)}</span>}
               </div>
             ))}
-            {!byUser.length && <p className="text-xs text-muted-foreground">Sem horas lançadas.</p>}
+            {!involvedUsers.length && !byUser.length && <p className="text-xs text-muted-foreground">Nenhum colaborador vinculado.</p>}
           </div>
         </Card>
       </div>
@@ -436,9 +513,21 @@ export default function ClientDetail() {
                 className="w-full accent-[hsl(var(--accent))]" />
             </div>
             <div className="md:col-span-3">
-              <Label>Serviços contratados (separados por vírgula)</Label>
-              <Input value={(draft.services ?? []).join(", ")}
-                onChange={(e) => setDraft({...draft, services: e.target.value.split(",").map(s => s.trim()).filter(Boolean)})} />
+              <Label>Serviços contratados (Enter para adicionar)</Label>
+              <div className="flex flex-wrap gap-1.5 mb-2 mt-1">
+                {(draft.services ?? []).map(s => (
+                  <Badge key={s} variant="secondary" className="gap-1">
+                    {s}
+                    <button type="button" onClick={() => removeServiceTag(s, true)}><X className="w-3 h-3" /></button>
+                  </Badge>
+                ))}
+              </div>
+              <Input
+                value={serviceInput}
+                onChange={(e) => setServiceInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addServiceTag(serviceInput, true); } }}
+                placeholder="Digite e pressione Enter"
+              />
             </div>
           </div>
         </Card>
