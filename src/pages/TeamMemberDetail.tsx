@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,23 +11,40 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, Briefcase, Calendar, Mail, ListTodo, Clock, Heart, Star,
-  DollarSign, FileDown, Plus, Trash2, TrendingUp, CheckCircle2, AlertTriangle, Save, Edit3
+  DollarSign, FileDown, Plus, Trash2, TrendingUp, CheckCircle2, AlertTriangle, Save, Edit3, Building2, UserMinus
 } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { exportReportPdf } from "@/lib/exportPdf";
+import { toast } from "sonner";
+
+type ClientLink = { id: string; client_id: string; source: string };
 
 export default function TeamMemberDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const { users, tasks, clients, timeEntries, currentUser, teamNotes, addTeamNote, deleteTeamNote, updateUser } = useApp();
 
-  if (currentUser.role !== "leader") return <Navigate to="/" replace />;
+  const isLeader = currentUser.role === "leader";
+  const canAccess = isLeader || currentUser.is_manager;
 
-  const member = users.find(u => u.id === id);
+  const [clientLinks, setClientLinks] = useState<ClientLink[]>([]);
   const [note, setNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ position: "", salary: 0, tax_rate: 0, hire_date: "" });
+
+  if (!canAccess) return <Navigate to="/" replace />;
+
+  const member = users.find(u => u.id === id);
+
+  async function loadClientLinks() {
+    if (!id) return;
+    const { data } = await supabase.from("client_collaborators").select("id,client_id,source").eq("user_id", id);
+    setClientLinks((data as ClientLink[]) ?? []);
+  }
+
+  useEffect(() => { loadClientLinks(); }, [id]);
 
   if (!member) return (
     <div className="max-w-3xl mx-auto py-12 text-center">
@@ -41,8 +60,10 @@ export default function TeamMemberDetail() {
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   const monthSeconds = memberEntries.filter(e => new Date(e.logged_at) >= monthStart).reduce((s,e) => s+e.seconds, 0);
 
-  const memberClientIds = [...new Set(memberTasks.map(t => t.client_id).filter(Boolean) as string[])];
-  const memberClients = clients.filter(c => memberClientIds.includes(c.id));
+  const linkedClientIds = new Set(clientLinks.map(l => l.client_id));
+  const memberClients = clients.filter(c => linkedClientIds.has(c.id));
+  const availableClients = clients.filter(c => c.status === "active" && !linkedClientIds.has(c.id));
+
   const avgSatisfaction = memberClients.length
     ? memberClients.reduce((s,c) => s + (c.satisfaction ?? 0), 0) / memberClients.length
     : 0;
@@ -54,7 +75,6 @@ export default function TeamMemberDetail() {
   const completionRate = memberTasks.length ? Math.round((done / memberTasks.length) * 100) : 0;
   const avgPerTask = done ? Math.round(totalSeconds / done) : 0;
 
-  // Trend: 12 semanas
   const trend = useMemo(() => Array.from({ length: 12 }, (_, i) => {
     const start = new Date(); start.setDate(start.getDate() - (11 - i) * 7); start.setHours(0,0,0,0);
     const end = new Date(start); end.setDate(start.getDate() + 7);
@@ -66,8 +86,6 @@ export default function TeamMemberDetail() {
   }), [memberEntries]);
 
   const notes = teamNotes.filter(n => n.user_id === member.id);
-
-  // Custos
   const salary = member.salary ?? 0;
   const taxRate = member.tax_rate ?? 32;
   const taxValue = salary * (taxRate / 100);
@@ -83,8 +101,39 @@ export default function TeamMemberDetail() {
     setEditing(true);
   }
   function saveEdit() {
-    updateUser(member!.id, { ...draft, hire_date: draft.hire_date || null });
+    updateUser(member!.id, isLeader
+      ? { ...draft, hire_date: draft.hire_date || null }
+      : { position: draft.position, hire_date: draft.hire_date || null });
     setEditing(false);
+  }
+
+  async function linkClient(clientId: string) {
+    const { error } = await supabase.from("client_collaborators").insert({
+      client_id: clientId,
+      user_id: member!.id,
+      source: "manual",
+    });
+    if (error) return toast.error(error.message);
+    toast.success("Cliente vinculado");
+    loadClientLinks();
+  }
+
+  async function unlinkClient(linkId: string) {
+    const link = clientLinks.find(l => l.id === linkId);
+    if (link?.source === "team") return toast.error("Cliente vinculado via time — remova pelo time.");
+    const { error } = await supabase.from("client_collaborators").delete().eq("id", linkId);
+    if (error) return toast.error(error.message);
+    toast.success("Cliente desvinculado");
+    loadClientLinks();
+  }
+
+  async function removeMember() {
+    if (!isLeader || !authUser) return;
+    if (!confirm(`Remover ${member!.name} permanentemente?`)) return;
+    const { data, error } = await supabase.functions.invoke("delete-user", { body: { user_id: member!.id } });
+    if (error || (data as any)?.error) return toast.error((data as any)?.error ?? error?.message ?? "Erro");
+    toast.success("Colaborador removido");
+    navigate("/team");
   }
 
   function exportPdf() {
@@ -93,21 +142,16 @@ export default function TeamMemberDetail() {
       title: `Funcionário — ${member!.name}`,
       subtitle: `${member!.position ?? ""} · ${member!.email}`,
       meta: {
-        "Tarefas":     memberTasks.length,
-        "Concluídas":  done,
-        "Atrasadas":   late,
+        "Tarefas": memberTasks.length,
+        "Concluídas": done,
         "Horas total": formatSeconds(totalSeconds),
-        "Horas mês":   formatSeconds(monthSeconds),
         "Satisfação clientes": `${avgSatisfaction.toFixed(1)} / 5`,
-        "Salário":      `R$ ${salary.toLocaleString("pt-BR")}`,
-        "Imposto":      `${taxRate}% (R$ ${taxValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })})`,
-        "Custo total":  `R$ ${totalCost.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`,
       },
       sections: [
         { title: "Tarefas recentes", head: ["Título","Cliente","Status","Atualizada"],
           rows: recentTasks.map(t => [t.title, clients.find(c => c.id === t.client_id)?.name ?? "—", stMap[t.status], formatDate(t.updated_at)]) },
-        { title: "Clientes vinculados", head: ["Cliente","Satisfação","Saúde"],
-          rows: memberClients.map(c => [c.name, `${(c.satisfaction ?? 0).toFixed(1)} / 5`, c.health ?? "—"]) },
+        { title: "Clientes vinculados", head: ["Cliente","Satisfação"],
+          rows: memberClients.map(c => [c.name, `${(c.satisfaction ?? 0).toFixed(1)} / 5`]) },
       ],
       fileName: `funcionario-${member!.name.toLowerCase().replace(/\s+/g,'-')}.pdf`,
     });
@@ -117,7 +161,6 @@ export default function TeamMemberDetail() {
     <div className="max-w-7xl mx-auto">
       <Button variant="ghost" size="sm" onClick={() => navigate("/team")} className="gap-2 mb-4 -ml-2"><ArrowLeft className="w-4 h-4" /> Equipe</Button>
 
-      {/* Hero */}
       <Card className="p-6 mb-6 relative overflow-hidden">
         <div className="absolute inset-0 gradient-glow opacity-50 pointer-events-none" />
         <div className="relative flex items-start justify-between gap-6 flex-wrap">
@@ -136,15 +179,17 @@ export default function TeamMemberDetail() {
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={exportPdf} className="gap-2"><FileDown className="w-4 h-4" /> Exportar PDF</Button>
             {!editing ? <Button onClick={startEdit} className="gap-2"><Edit3 className="w-4 h-4" /> Editar</Button>
-                      : <Button onClick={saveEdit} className="gap-2"><Save className="w-4 h-4" /> Salvar</Button>}
+              : <Button onClick={saveEdit} className="gap-2"><Save className="w-4 h-4" /> Salvar</Button>}
+            {isLeader && member.id !== authUser?.id && (
+              <Button variant="destructive" onClick={removeMember} className="gap-2"><UserMinus className="w-4 h-4" /> Remover</Button>
+            )}
           </div>
         </div>
       </Card>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <Card className="p-5">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><ListTodo className="w-3.5 h-3.5" /> Tarefas</div>
@@ -177,41 +222,42 @@ export default function TeamMemberDetail() {
         </Card>
       </div>
 
-      {/* Editor */}
       {editing && (
         <Card className="p-6 mb-6 border-accent/40">
-          <h3 className="font-display font-semibold mb-4">Dados profissionais e financeiros</h3>
+          <h3 className="font-display font-semibold mb-4">Dados profissionais{isLeader ? " e financeiros" : ""}</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div><Label>Cargo</Label><Input value={draft.position} onChange={(e) => setDraft({...draft, position: e.target.value})} /></div>
-            <div><Label>Salário (R$)</Label><Input type="number" value={draft.salary} onChange={(e) => setDraft({...draft, salary: +e.target.value})} /></div>
-            <div><Label>% Imposto/encargos</Label><Input type="number" value={draft.tax_rate} onChange={(e) => setDraft({...draft, tax_rate: +e.target.value})} /></div>
+            {isLeader && (
+              <>
+                <div><Label>Salário (R$)</Label><Input type="number" value={draft.salary} onChange={(e) => setDraft({...draft, salary: +e.target.value})} /></div>
+                <div><Label>% Imposto/encargos</Label><Input type="number" value={draft.tax_rate} onChange={(e) => setDraft({...draft, tax_rate: +e.target.value})} /></div>
+              </>
+            )}
             <div><Label>Data de admissão</Label><Input type="date" value={draft.hire_date?.slice(0,10) ?? ""} onChange={(e) => setDraft({...draft, hire_date: e.target.value})} /></div>
           </div>
         </Card>
       )}
 
-      {/* Financeiro */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><DollarSign className="w-3.5 h-3.5" /> Salário bruto</div>
-          <p className="font-display text-2xl font-bold tabular-nums">R$ {salary.toLocaleString("pt-BR")}</p>
-        </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><DollarSign className="w-3.5 h-3.5" /> Encargos / Imposto</div>
-          <p className="font-display text-2xl font-bold tabular-nums text-warning">+ R$ {taxValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</p>
-          <p className="text-xs text-muted-foreground mt-1">{taxRate}% sobre salário</p>
-        </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><DollarSign className="w-3.5 h-3.5" /> Custo total mensal</div>
-          <p className="font-display text-2xl font-bold tabular-nums text-destructive">R$ {totalCost.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</p>
-        </Card>
-      </div>
+      {isLeader && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><DollarSign className="w-3.5 h-3.5" /> Salário bruto</div>
+            <p className="font-display text-2xl font-bold tabular-nums">R$ {salary.toLocaleString("pt-BR")}</p>
+          </Card>
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><DollarSign className="w-3.5 h-3.5" /> Encargos</div>
+            <p className="font-display text-2xl font-bold tabular-nums text-warning">+ R$ {taxValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</p>
+          </Card>
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><Heart className="w-3.5 h-3.5" /> Custo total</div>
+            <p className="font-display text-2xl font-bold tabular-nums text-destructive">R$ {totalCost.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</p>
+          </Card>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* Trend */}
         <Card className="p-6 lg:col-span-2">
           <h3 className="font-display font-semibold mb-1">Horas trabalhadas — 12 semanas</h3>
-          <p className="text-xs text-muted-foreground mb-4">Volume semanal de horas lançadas</p>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trend}>
@@ -231,32 +277,45 @@ export default function TeamMemberDetail() {
           </div>
         </Card>
 
-        {/* Clientes */}
         <Card className="p-6">
           <h3 className="font-display font-semibold mb-1">Clientes vinculados</h3>
           <p className="text-xs text-muted-foreground mb-4">{memberClients.length} cliente(s)</p>
-          <div className="space-y-2 max-h-72 overflow-y-auto">
-            {memberClients.map(c => (
-              <div key={c.id} onClick={() => navigate(`/clients/${c.id}`)} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 cursor-pointer">
-                <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">{c.name.charAt(0)}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{c.name}</p>
-                  <div className="flex items-center gap-0.5">
-                    {[1,2,3,4,5].map(n => <Star key={n} className={`w-3 h-3 ${n <= Math.round(c.satisfaction ?? 0) ? "fill-warning text-warning" : "text-muted-foreground/20"}`} />)}
+          <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
+            {memberClients.map(c => {
+              const link = clientLinks.find(l => l.client_id === c.id);
+              return (
+                <div key={c.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50">
+                  <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">{c.name.charAt(0)}</div>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigate(`/clients/${c.id}`)}>
+                    <p className="text-sm font-medium truncate">{c.name}</p>
+                    {link?.source === "team" && <p className="text-[10px] text-muted-foreground">Via time</p>}
                   </div>
+                  {link && link.source === "manual" && (
+                    <button onClick={() => unlinkClient(link.id)} className="text-muted-foreground hover:text-destructive" title="Desvincular">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                <Badge variant="outline" className="text-[10px]">{c.health ?? "—"}</Badge>
-              </div>
-            ))}
+              );
+            })}
             {!memberClients.length && <p className="text-xs text-muted-foreground">Nenhum cliente vinculado.</p>}
           </div>
+          {availableClients.length > 0 && (
+            <select
+              className="w-full text-xs px-2 py-2 rounded-md border bg-background"
+              defaultValue=""
+              onChange={e => { if (e.target.value) { linkClient(e.target.value); e.target.value = ""; } }}
+            >
+              <option value="">+ Vincular cliente...</option>
+              {availableClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
         </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent tasks */}
         <Card className="p-6 lg:col-span-2">
-          <h3 className="font-display font-semibold mb-4">Últimas tarefas lançadas</h3>
+          <h3 className="font-display font-semibold mb-4">Últimas tarefas</h3>
           <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
             {recentTasks.map(t => {
               const c = clients.find(x => x.id === t.client_id);
@@ -266,7 +325,7 @@ export default function TeamMemberDetail() {
                   <div className={`w-1 h-8 rounded-full ${t.status==="done"?"bg-success":t.status==="in_progress"?"bg-primary":t.status==="review"?"bg-warning":"bg-muted-foreground/40"}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{t.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">{c?.name ?? "—"} · atualizada {formatDate(t.updated_at)}</p>
+                    <p className="text-xs text-muted-foreground truncate">{c?.name ?? "—"} · {formatDate(t.updated_at)}</p>
                   </div>
                   <Badge variant="outline" className="text-[10px]">{stMap[t.status]}</Badge>
                 </div>
@@ -276,13 +335,10 @@ export default function TeamMemberDetail() {
           </div>
         </Card>
 
-        {/* Notes */}
         <Card className="p-6">
-          <h3 className="font-display font-semibold mb-3">Anotações do líder</h3>
-          <div className="flex gap-2 mb-3">
-            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Feedback, evolução, pontos de atenção…" />
-          </div>
-          <Button size="sm" onClick={() => { if (note.trim()) { addTeamNote(member!.id, note.trim()); setNote(""); } }} className="w-full mb-4 gap-2"><Plus className="w-3 h-3" /> Adicionar anotação</Button>
+          <h3 className="font-display font-semibold mb-3">Anotações</h3>
+          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Feedback, evolução..." className="mb-2" />
+          <Button size="sm" onClick={() => { if (note.trim()) { addTeamNote(member!.id, note.trim()); setNote(""); } }} className="w-full mb-4 gap-2"><Plus className="w-3 h-3" /> Adicionar</Button>
           <div className="space-y-2 max-h-[280px] overflow-y-auto">
             {notes.map(n => (
               <div key={n.id} className="bg-muted/40 rounded-lg p-3 text-sm group relative">
@@ -293,7 +349,6 @@ export default function TeamMemberDetail() {
                 </button>
               </div>
             ))}
-            {!notes.length && <p className="text-xs text-muted-foreground">Nenhuma anotação ainda.</p>}
           </div>
         </Card>
       </div>

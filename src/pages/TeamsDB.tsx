@@ -14,25 +14,33 @@ import { Plus, Users2, Trash2 } from "lucide-react";
 type Team = { id: string; name: string; description: string | null; color: string | null; leader_id: string | null };
 type Member = { id: string; team_id: string; user_id: string; role_in_team: "manager" | "member" };
 type Profile = { id: string; name: string };
+type Client = { id: string; name: string; status: "active" | "paused" | "archived" };
+type ClientTeam = { id: string; client_id: string; team_id: string };
 
 export default function TeamsDB() {
   const { user } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientTeams, setClientTeams] = useState<ClientTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
 
   async function load() {
     setLoading(true);
-    const [t, m, p] = await Promise.all([
+    const [t, m, p, c, ct] = await Promise.all([
       supabase.from("teams").select("*").order("name"),
       supabase.from("team_members").select("*"),
       supabase.from("profiles").select("id,name").order("name"),
+      supabase.from("clients").select("id,name,status").order("name"),
+      supabase.from("client_teams").select("id,client_id,team_id"),
     ]);
     setTeams((t.data as any) ?? []);
     setMembers((m.data as any) ?? []);
     setProfiles((p.data as any) ?? []);
+    setClients((c.data as any) ?? []);
+    setClientTeams((ct.data as any) ?? []);
     setLoading(false);
   }
   useEffect(() => {
@@ -42,6 +50,8 @@ export default function TeamsDB() {
       .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "client_teams" }, load)
       .subscribe();
 
     return () => {
@@ -71,6 +81,21 @@ export default function TeamsDB() {
     load();
   }
 
+  async function addClient(teamId: string, clientId: string) {
+    if (!clientId) return;
+    const { error } = await supabase.from("client_teams").insert({ team_id: teamId, client_id: clientId });
+    if (error) return toast.error(error.message);
+    toast.success("Cliente vinculado ao time");
+    load();
+  }
+
+  async function removeClient(teamId: string, clientId: string) {
+    const { error } = await supabase.from("client_teams").delete().eq("team_id", teamId).eq("client_id", clientId);
+    if (error) return toast.error(error.message);
+    toast.success("Cliente removido do time");
+    load();
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -95,6 +120,9 @@ export default function TeamsDB() {
           {teams.map(t => {
             const tm = members.filter(m => m.team_id === t.id);
             const available = profiles.filter(p => !tm.some(x => x.user_id === p.id));
+            const teamClientLinks = clientTeams.filter(ct => ct.team_id === t.id);
+            const teamClients = clients.filter(c => teamClientLinks.some(ct => ct.client_id === c.id));
+            const availableClients = clients.filter(c => c.status === "active" && !teamClientLinks.some(ct => ct.client_id === c.id));
             return (
               <Card key={t.id} className="p-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -148,6 +176,30 @@ export default function TeamsDB() {
                       </select>
                     </div>
                   )}
+
+                  <div className="border-t border-border pt-3 mt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Clientes vinculados</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {teamClients.map(c => (
+                        <Badge key={c.id} variant="outline" className="gap-1">
+                          {c.name}
+                          {isAdmin && (
+                            <button onClick={() => removeClient(t.id, c.id)} className="ml-1 opacity-60 hover:opacity-100">×</button>
+                          )}
+                        </Badge>
+                      ))}
+                      {teamClients.length === 0 && <span className="text-xs text-muted-foreground">Sem clientes</span>}
+                    </div>
+                    {isAdmin && availableClients.length > 0 && (
+                      <select
+                        className="w-full text-xs px-2 py-1.5 rounded-md border bg-background mt-2"
+                        onChange={e => { if (e.target.value) { addClient(t.id, e.target.value); e.target.value = ""; } }}
+                      >
+                        <option value="">+ Vincular cliente ao time...</option>
+                        {availableClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    )}
+                  </div>
                 </div>
               </Card>
             );

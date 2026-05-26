@@ -69,9 +69,18 @@ Deno.serve(async (req) => {
     // Always replace any default role inserted by handle_new_user with the chosen one
     {
       const delRes = await admin.from('user_roles').delete().eq('user_id', newUserId);
-      if (delRes.error) console.error('delete role failed', delRes.error);
+      if (delRes.error) return json({ error: `Falha ao ajustar papel padrão: ${delRes.error.message}` }, 400);
       const insRes = await admin.from('user_roles').insert({ user_id: newUserId, role });
-      if (insRes.error) console.error('insert role failed', insRes.error);
+      if (insRes.error) return json({ error: `Falha ao salvar papel do usuário: ${insRes.error.message}` }, 400);
+    }
+
+    const { data: savedRoles, error: roleCheckError } = await admin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', newUserId);
+    if (roleCheckError) return json({ error: `Falha ao validar papel: ${roleCheckError.message}` }, 400);
+    if (!(savedRoles ?? []).some((r: any) => r.role === role)) {
+      return json({ error: 'Não foi possível confirmar o papel do novo usuário' }, 400);
     }
 
     // Add to teams

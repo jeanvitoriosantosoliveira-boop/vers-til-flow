@@ -33,7 +33,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     supabase
       .from("notifications")
       .select("*")
-      .or(`user_id.eq.${user.id},user_id.is.null`)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50)
       .then(({ data }) => {
@@ -45,7 +45,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, (payload) => {
         const next = payload.new as Notification | undefined;
         const old = payload.old as Notification | undefined;
-        const belongsToUser = (item?: Notification) => item && (!item.user_id || item.user_id === user.id);
+        const belongsToUser = (item?: Notification) => item && item.user_id === user.id;
         if (payload.eventType === "DELETE") {
           if (old) setNotifications(prev => prev.filter(n => n.id !== old.id));
           return;
@@ -65,6 +65,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   const push = useCallback((n: Omit<Notification, "id" | "created_at" | "read">) => {
+    if (!n.user_id) return;
     const item = { ...n, id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 11), created_at: new Date().toISOString(), read: false };
     setNotifications(prev => [
       item,
@@ -80,13 +81,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const markAllRead = useCallback(() => {
     setNotifications(p => p.map(n => ({ ...n, read: true })));
     if (isSupabaseConfigured && user?.id) {
-      supabase.from("notifications").update({ read: true }).or(`user_id.eq.${user.id},user_id.is.null`);
+      supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
     }
   }, [user?.id]);
   const clear = useCallback(() => {
     setNotifications([]);
     if (isSupabaseConfigured && user?.id) {
-      supabase.from("notifications").delete().or(`user_id.eq.${user.id},user_id.is.null`);
+      supabase.from("notifications").delete().eq("user_id", user.id);
     }
   }, [user?.id]);
 

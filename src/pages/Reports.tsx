@@ -24,6 +24,8 @@ export default function Reports() {
   const [q, setQ] = useState("");
   const [taskPage, setTaskPage] = useState(0);
   const isLeader = currentUser.role === "leader";
+  const isManager = !!currentUser.is_manager;
+  const canSeeTeamReport = isLeader || isManager;
   const PAGE_SIZE = 20;
   const healthMap: Record<string, { label: string; cls: string }> = {
     great:   { label: "Excelente", cls: "bg-success/15 text-success border-success/30" },
@@ -70,9 +72,17 @@ export default function Reports() {
       exportReportPdf({
         title: "Relatório de Clientes",
         subtitle: periodLabel,
-        meta: { "Clientes": clientRows.length, "Total horas": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)), "Receita/mês": `R$ ${clientRows.reduce((s,r) => s+r.fee, 0).toLocaleString("pt-BR")}` },
-        sections: [{ title: "Clientes", head: ["Cliente","Mensalidade","Tarefas","Concluídas","Horas","Meta","Saúde"],
-          rows: clientRows.map(r => [r.c.name, `R$ ${r.fee.toLocaleString("pt-BR")}`, r.totalTasks, r.done, `${r.hours.toFixed(1)}h`, `${r.target}h`, r.c.health ?? "—"]) }],
+        meta: {
+          "Clientes": clientRows.length,
+          "Total horas": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)),
+          ...(isLeader ? { "Receita/mês": `R$ ${clientRows.reduce((s,r) => s+r.fee, 0).toLocaleString("pt-BR")}` } : {}),
+        },
+        sections: [{ title: "Clientes", head: isLeader
+          ? ["Cliente","Mensalidade","Tarefas","Concluídas","Horas","Meta","Saúde"]
+          : ["Cliente","Tarefas","Concluídas","Horas","Meta","Saúde"],
+          rows: clientRows.map(r => isLeader
+            ? [r.c.name, `R$ ${r.fee.toLocaleString("pt-BR")}`, r.totalTasks, r.done, `${r.hours.toFixed(1)}h`, `${r.target}h`, r.c.health ?? "—"]
+            : [r.c.name, r.totalTasks, r.done, `${r.hours.toFixed(1)}h`, `${r.target}h`, r.c.health ?? "—"]) }],
         fileName: "relatorio-clientes.pdf",
       });
     } else if (tab === "tasks") {
@@ -146,7 +156,7 @@ export default function Reports() {
         {[
           { id: "clients",   title: "Clientes",   subtitle: `${clients.length} cliente(s)`,                           icon: Building,   color: "text-primary" },
           { id: "tasks",     title: "Tarefas",    subtitle: `${tasks.length} tarefa(s) no total`,                     icon: ListTodo,   color: "text-accent" },
-          ...(isLeader ? [{ id: "team",      title: "Equipe",     subtitle: `${users.filter(u => u.role==="employee").length} funcionário(s)`, icon: UsersIcon, color: "text-warning" }] : []),
+          ...(canSeeTeamReport ? [{ id: "team",      title: "Equipe",     subtitle: `${users.filter(u => u.role==="employee").length} funcionário(s)`, icon: UsersIcon, color: "text-warning" }] : []),
           ...(isLeader ? [{ id: "financial", title: "Financeiro", subtitle: "Receitas, despesas e folha",            icon: Wallet,    color: "text-success" }] : []),
         ].map(card => {
           const Icon = card.icon;
@@ -168,7 +178,7 @@ export default function Reports() {
           <TabsList>
             <TabsTrigger value="clients" className="gap-2"><Building className="w-3.5 h-3.5" /> Clientes</TabsTrigger>
             <TabsTrigger value="tasks" className="gap-2"><ListTodo className="w-3.5 h-3.5" /> Tarefas</TabsTrigger>
-            {isLeader && <TabsTrigger value="team" className="gap-2"><UsersIcon className="w-3.5 h-3.5" /> Equipe</TabsTrigger>}
+            {canSeeTeamReport && <TabsTrigger value="team" className="gap-2"><UsersIcon className="w-3.5 h-3.5" /> Equipe</TabsTrigger>}
           </TabsList>
         </Tabs>
         <div className="relative flex-1 md:max-w-sm md:ml-auto">
@@ -184,7 +194,7 @@ export default function Reports() {
               <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold">Cliente</th>
-                  <th className="text-right px-4 py-3 font-semibold">Mensalidade</th>
+                  {isLeader && <th className="text-right px-4 py-3 font-semibold">Mensalidade</th>}
                   <th className="text-right px-4 py-3 font-semibold">Tarefas</th>
                   <th className="text-right px-4 py-3 font-semibold">Horas / Meta</th>
                   <th className="text-left px-4 py-3 font-semibold">Saúde</th>
@@ -206,7 +216,9 @@ export default function Reports() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-semibold">R$ {r.fee.toLocaleString("pt-BR")}</td>
+                      {isLeader && (
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold">R$ {r.fee.toLocaleString("pt-BR")}</td>
+                      )}
                       <td className="px-4 py-3 text-right tabular-nums">{r.done}/{r.totalTasks}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center gap-2 justify-end">
@@ -269,7 +281,7 @@ export default function Reports() {
         </Card>
       )}
 
-      {tab === "team" && isLeader && (
+      {tab === "team" && canSeeTeamReport && (
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

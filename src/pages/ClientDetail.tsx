@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { Card } from "@/components/ui/card";
@@ -13,6 +13,8 @@ import { formatSeconds, formatDate } from "@/lib/format";
 import type { Client } from "@/types";
 import { exportReportPdf } from "@/lib/exportPdf";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { supabase } from "@/integrations/supabase/client";
+import { CLIENT_STATUS_LABEL, CLIENT_STATUS_OPTIONS } from "@/lib/clientStatus";
 
 const healthMap = {
   great:   { label: "Excelente", color: "text-success", bg: "bg-success/15", bar: "bg-success" },
@@ -28,6 +30,9 @@ export default function ClientDetail() {
   const client = clients.find(c => c.id === id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
+  const [linkedServices, setLinkedServices] = useState<{ id: string; service_id: string; monthly_price: number; service?: { name: string } }[]>([]);
+  const [catalogServices, setCatalogServices] = useState<{ id: string; name: string }[]>([]);
+  const [involvedUsers, setInvolvedUsers] = useState<{ id: string; user_id: string; source: string; profile?: { id: string; name: string; position?: string | null } }[]>([]);
 
   if (!client) return (
     <div className="max-w-3xl mx-auto py-12 text-center">
@@ -78,6 +83,39 @@ export default function ClientDetail() {
   }, [clientEntries, users]);
 
   const health = healthMap[client.health ?? "good"];
+
+  async function loadLinks() {
+    if (!client?.id) return;
+    const [svcLinksRes, svcRes, invRes] = await Promise.all([
+      supabase.from("client_services").select("id,service_id,monthly_price,service:services(name)").eq("client_id", client.id),
+      supabase.from("services").select("id,name").eq("is_active", true).order("name"),
+      supabase.from("client_collaborators").select("id,user_id,source,profile:profiles(id,name,position)").eq("client_id", client.id),
+    ]);
+    setLinkedServices((svcLinksRes.data as any) ?? []);
+    setCatalogServices((svcRes.data as any) ?? []);
+    setInvolvedUsers((invRes.data as any) ?? []);
+  }
+
+  useEffect(() => { loadLinks(); }, [client?.id]);
+
+  async function linkService(serviceId: string) {
+    const svc = catalogServices.find(s => s.id === serviceId);
+    const { error } = await supabase.from("client_services").insert({
+      client_id: client.id,
+      service_id: serviceId,
+      monthly_price: 0,
+    });
+    if (error) return;
+    await loadLinks();
+    if (svc) setDraft(prev => ({ ...prev, services: [...new Set([...(prev.services ?? client.services ?? []), svc.name])] }));
+  }
+
+  async function unlinkService(linkId: string, name?: string) {
+    const { error } = await supabase.from("client_services").delete().eq("id", linkId);
+    if (error) return;
+    await loadLinks();
+    if (name) setDraft(prev => ({ ...prev, services: (prev.services ?? client.services ?? []).filter(s => s !== name) }));
+  }
 
   function startEdit() { setDraft(client!); setEditing(true); }
   function saveEdit() { updateClient(client!.id, draft); setEditing(false); }
@@ -132,6 +170,7 @@ export default function ClientDetail() {
                 <Badge className={`${health.bg} ${health.color} border-0 gap-1`}>
                   <Sparkles className="w-3 h-3" /> {health.label}
                 </Badge>
+                <Badge variant="outline">{CLIENT_STATUS_LABEL[client.status]}</Badge>
               </div>
               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2 flex-wrap">
                 {client.company && <span className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> {client.company}</span>}
@@ -176,16 +215,15 @@ export default function ClientDetail() {
           <div className="flex items-center gap-1">
             {[1,2,3,4,5].map(n => (
               <button key={n} type="button"
-                disabled={!isLeader}
                 onClick={() => setClientSatisfaction(client.id, n)}
-                className={isLeader ? "transition hover:scale-110 cursor-pointer" : "cursor-default"}
+                className="transition hover:scale-110 cursor-pointer"
                 aria-label={`Definir ${n} estrelas`}>
                 <Star className={`w-5 h-5 ${n <= Math.round(client.satisfaction ?? 0) ? "fill-warning text-warning" : "text-muted-foreground/30"}`} />
               </button>
             ))}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {(client.satisfaction ?? 0).toFixed(1)} / 5 {isLeader && <span className="text-[10px]">· clique para registrar</span>}
+            {(client.satisfaction ?? 0).toFixed(1)} / 5 <span className="text-[10px]">· clique para registrar</span>
           </p>
         </Card>
         {isLeader && (
@@ -255,27 +293,38 @@ export default function ClientDetail() {
 
         <Card className="p-6">
           <h3 className="font-display font-semibold mb-1">Serviços contratados</h3>
-          <p className="text-xs text-muted-foreground mb-4">{(client.services ?? []).length} ativos</p>
+          <p className="text-xs text-muted-foreground mb-4">{linkedServices.length || (client.services ?? []).length} ativos</p>
           <div className="flex flex-wrap gap-2">
-            {(client.services ?? []).map(s => (
-              <Badge key={s} variant="secondary" className="bg-accent/10 text-accent border-accent/20">{s}</Badge>
+            {(linkedServices.length ? linkedServices.map(s => ({ id: s.id, name: s.service?.name ?? "Serviço" })) : (client.services ?? []).map(s => ({ id: s, name: s }))).map(s => (
+              <Badge key={s.id} variant="secondary" className="bg-accent/10 text-accent border-accent/20 gap-1">
+                {s.name}
+                {isLeader && linkedServices.some(ls => ls.id === s.id) && (
+                  <button onClick={() => unlinkService(s.id, s.name)} className="ml-1 opacity-70 hover:opacity-100">×</button>
+                )}
+              </Badge>
             ))}
-            {!(client.services?.length) && <p className="text-xs text-muted-foreground">Nenhum serviço cadastrado.</p>}
+            {!linkedServices.length && !(client.services?.length) && <p className="text-xs text-muted-foreground">Nenhum serviço cadastrado.</p>}
           </div>
+          {isLeader && catalogServices.length > 0 && (
+            <select className="w-full mt-3 text-xs px-2 py-1.5 rounded-md border bg-background" defaultValue="" onChange={(e) => { if (e.target.value) { linkService(e.target.value); e.target.value = ""; } }}>
+              <option value="">+ Vincular serviço...</option>
+              {catalogServices.filter(s => !linkedServices.some(ls => ls.service_id === s.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          )}
 
           <div className="border-t border-border my-4" />
           <h4 className="text-sm font-semibold mb-2">Equipe envolvida</h4>
           <div className="space-y-2">
-            {byUser.map(({ user, seconds }) => (
+            {(involvedUsers.length ? involvedUsers.map(i => ({ user: i.profile as any, seconds: 0, source: i.source })) : byUser.map(i => ({ ...i, source: "task" }))).map(({ user, seconds, source }: any) => (
               <div key={user!.id} className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center text-[10px] font-semibold text-primary-foreground">
                   {user!.name.split(" ").map(n => n[0]).slice(0,2).join("")}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm truncate">{user!.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{user!.position ?? "Colaborador"}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user!.position ?? "Colaborador"} {source === "team" ? "· via time" : ""}</p>
                 </div>
-                <span className="text-xs tabular-nums text-muted-foreground">{formatSeconds(seconds)}</span>
+                {seconds > 0 && <span className="text-xs tabular-nums text-muted-foreground">{formatSeconds(seconds)}</span>}
               </div>
             ))}
             {!byUser.length && <p className="text-xs text-muted-foreground">Sem horas lançadas.</p>}
@@ -368,6 +417,15 @@ export default function ClientDetail() {
                   <SelectItem value="good">Saudável</SelectItem>
                   <SelectItem value="warning">Atenção</SelectItem>
                   <SelectItem value="risk">Em risco</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={(draft.status ?? client.status) as any} onValueChange={(v) => setDraft({...draft, status: v as Client["status"]})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CLIENT_STATUS_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

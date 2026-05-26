@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, FileDown, Building, ListTodo, Users as UsersIcon, Wallet } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, FileDown, Building, ListTodo, Users as UsersIcon, Wallet } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 import { exportReportPdf } from "@/lib/exportPdf";
 import {
@@ -15,14 +15,18 @@ import {
 const STATUS_LABEL: Record<string,string> = { todo:"A Fazer", in_progress:"Em andamento", review:"Revisão", done:"Concluído" };
 const STATUS_COLOR: Record<string,string> = { todo:"hsl(var(--muted-foreground))", in_progress:"hsl(var(--primary))", review:"hsl(var(--warning))", done:"hsl(var(--success))" };
 const BRL = (v: number) => `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
+const PAGE_SIZE = 20;
 
 export default function ReportDetail() {
   const { type } = useParams<{ type: "clients" | "tasks" | "team" | "financial" }>();
   const navigate = useNavigate();
   const { clients, tasks, users, timeEntries, currentUser, expenses, extraServices } = useApp();
+  const [taskPage, setTaskPage] = useState(0);
+  const isLeader = currentUser.role === "leader";
 
   if (!type || !["clients","tasks","team","financial"].includes(type)) return <Navigate to="/reports" replace />;
-  if ((type === "team" || type === "financial") && currentUser.role !== "leader") return <Navigate to="/" replace />;
+  if (type === "financial" && !isLeader) return <Navigate to="/" replace />;
+  if (type === "team" && !isLeader && !currentUser.is_manager) return <Navigate to="/" replace />;
 
   const meta = ({
     clients:   { title: "Relatório de Clientes",   icon: Building,   color: "from-primary to-accent" },
@@ -63,9 +67,17 @@ export default function ReportDetail() {
     if (type === "clients") {
       exportReportPdf({
         title: meta.title, subtitle: `Gerado em ${new Date().toLocaleDateString("pt-BR")}`,
-        meta: { "Clientes": clientRows.length, "Receita/mês": BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0),0)), "Horas totais": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)) },
-        sections: [{ title: "Clientes", head: ["Cliente","Empresa","Mensalidade","Tarefas","Concluídas","Horas","Saúde"],
-          rows: clientRows.map(r => [r.c.name, r.c.company ?? "—", BRL(r.c.monthly_fee ?? 0), r.total, r.done, formatSeconds(r.seconds), r.c.health ?? "—"]) }],
+        meta: {
+          "Clientes": clientRows.length,
+          ...(isLeader ? { "Receita/mês": BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0),0)) } : {}),
+          "Horas totais": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)),
+        },
+        sections: [{ title: "Clientes", head: isLeader
+          ? ["Cliente","Empresa","Mensalidade","Tarefas","Concluídas","Horas","Saúde"]
+          : ["Cliente","Empresa","Tarefas","Concluídas","Horas","Saúde"],
+          rows: clientRows.map(r => isLeader
+            ? [r.c.name, r.c.company ?? "—", BRL(r.c.monthly_fee ?? 0), r.total, r.done, formatSeconds(r.seconds), r.c.health ?? "—"]
+            : [r.c.name, r.c.company ?? "—", r.total, r.done, formatSeconds(r.seconds), r.c.health ?? "—"]) }],
         fileName: "relatorio-clientes.pdf",
       });
     } else if (type === "tasks") {
@@ -121,29 +133,32 @@ export default function ReportDetail() {
 
       {type === "clients" && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className={`grid grid-cols-2 ${isLeader ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-4 mb-6`}>
             <KPI label="Total de clientes" value={clientRows.length.toString()} />
             <KPI label="Ativos"      value={clients.filter(c => c.status==="active").length.toString()} tone="success" />
-            <KPI label="Receita/mês" value={BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0), 0))} tone="primary" />
+            {isLeader && <KPI label="Receita/mês" value={BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0), 0))} tone="primary" />}
             <KPI label="Horas totais" value={formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0))} />
           </div>
-          <Card className="p-6 mb-6">
-            <h3 className="font-display font-semibold mb-4">Receita por cliente</h3>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={clients.map(c => ({ name: c.name, Receita: c.monthly_fee ?? 0 }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 12 }} formatter={(v: number) => BRL(v)} />
-                  <Bar dataKey="Receita" fill="hsl(var(--primary))" radius={[6,6,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-          <DataTable head={["Cliente","Mensalidade","Tarefas","Concluídas","Horas","Saúde"]} rows={clientRows.map(r => [
-            r.c.name, BRL(r.c.monthly_fee ?? 0), r.total, r.done, formatSeconds(r.seconds), <Badge key={r.c.id} variant="outline">{r.c.health ?? "—"}</Badge>
-          ])} />
+          {isLeader && (
+            <Card className="p-6 mb-6">
+              <h3 className="font-display font-semibold mb-4">Receita por cliente</h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={clients.map(c => ({ name: c.name, Receita: c.monthly_fee ?? 0 }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 12 }} formatter={(v: number) => BRL(v)} />
+                    <Bar dataKey="Receita" fill="hsl(var(--primary))" radius={[6,6,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          )}
+          <DataTable head={isLeader ? ["Cliente","Mensalidade","Tarefas","Concluídas","Horas","Saúde"] : ["Cliente","Tarefas","Concluídas","Horas","Saúde"]} rows={clientRows.map(r => isLeader
+            ? [r.c.name, BRL(r.c.monthly_fee ?? 0), r.total, r.done, formatSeconds(r.seconds), <Badge key={r.c.id} variant="outline">{r.c.health ?? "—"}</Badge>]
+            : [r.c.name, r.total, r.done, formatSeconds(r.seconds), <Badge key={r.c.id} variant="outline">{r.c.health ?? "—"}</Badge>]
+          )} />
         </>
       )}
 
@@ -169,10 +184,25 @@ export default function ReportDetail() {
               </ResponsiveContainer>
             </div>
           </Card>
-          <DataTable head={["Tarefa","Cliente","Responsável","Status","Tempo","Prazo"]} rows={tasks.map(t => [
+          <DataTable head={["Tarefa","Cliente","Responsável","Status","Tempo","Prazo"]} rows={tasks.slice(taskPage * PAGE_SIZE, (taskPage + 1) * PAGE_SIZE).map(t => [
             t.title, clients.find(c => c.id===t.client_id)?.name ?? "—", users.find(u => u.id===t.assignee_id)?.name ?? "—",
             <Badge key={t.id} variant="secondary">{STATUS_LABEL[t.status]}</Badge>, formatSeconds(t.total_seconds), t.due_date ? formatDate(t.due_date) : "—"
           ])} />
+          {tasks.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between p-3 border-t border-border text-xs mt-0">
+              <span className="text-muted-foreground">
+                Mostrando {taskPage * PAGE_SIZE + 1}–{Math.min((taskPage + 1) * PAGE_SIZE, tasks.length)} de {tasks.length}
+              </span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" disabled={taskPage === 0} onClick={() => setTaskPage(p => Math.max(0, p - 1))} className="gap-1">
+                  <ChevronLeft className="w-3 h-3" /> Anterior
+                </Button>
+                <Button size="sm" variant="outline" disabled={(taskPage + 1) * PAGE_SIZE >= tasks.length} onClick={() => setTaskPage(p => p + 1)} className="gap-1">
+                  Próximo <ChevronRight className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

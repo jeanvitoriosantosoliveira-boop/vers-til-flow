@@ -10,7 +10,8 @@ import { ChevronRight, Briefcase } from "lucide-react";
 export default function Team() {
   const { users, tasks, currentUser } = useApp();
   const navigate = useNavigate();
-  if (currentUser.role !== "leader") return <Navigate to="/" replace />;
+  const canAccess = currentUser.role === "leader" || currentUser.is_manager;
+  if (!canAccess) return <Navigate to="/" replace />;
 
   const team = useMemo(() => users.filter(u => u.role === "employee").map(u => {
     const t = tasks.filter(x => x.assignee_id === u.id);

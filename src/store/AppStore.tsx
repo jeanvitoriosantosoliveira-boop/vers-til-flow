@@ -593,7 +593,7 @@ const currentUser: User =
         return;
       }
     }
-    pushNotif({ type: "info", title: "Novo cliente", body: c.name });
+    pushNotif({ type: "info", title: "Novo cliente", body: c.name, user_id: currentUser.id });
     toast.success("Cliente criado", { description: c.name });
   }, [usingBackend, pushNotif]);
 

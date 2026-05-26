@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Client } from "@/types";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 import { useSearch } from "@/context/SearchContext";
+import { CLIENT_STATUS_LABEL } from "@/lib/clientStatus";
 
 function contractInfo(c: Client) {
   if (!c.contract_end) return null;
@@ -116,7 +117,10 @@ export default function Clients() {
                 <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-accent transition-colors" />
               </div>
               <div className="flex items-center justify-between mb-3">
-                <Badge className={`${h.cls} border-0 text-[10px]`}>{h.label}</Badge>
+                <div className="flex items-center gap-1">
+                  <Badge className={`${h.cls} border-0 text-[10px]`}>{h.label}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{CLIENT_STATUS_LABEL[c.status]}</Badge>
+                </div>
                 <div className="flex items-center gap-0.5">
                   {[1,2,3,4,5].map(n => (
                     <Star key={n} className={`w-3 h-3 ${n <= Math.round(c.satisfaction ?? 0) ? "fill-warning text-warning" : "text-muted-foreground/20"}`} />
