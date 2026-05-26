@@ -1,84 +1,108 @@
-# Plano de Migração Completa para Banco de Dados Real
+## Objetivo
+Aplicar uma rodada grande de melhorias: corrigir bug de role, esconder dados financeiros de gerente/colaborador, paginação em relatórios, notificações individuais, gestão completa de colaboradores/clientes/times, cadastro de serviços, upload de avatar e troca de senha.
 
-Esta é uma reformulação grande do sistema. Vou executar em fases para garantir que tudo funcione. Antes de começar, preciso confirmar alguns pontos importantes.
+---
 
-## O que será feito
+## 1. Banco de dados (migration)
 
-### 1. Banco de Dados (Supabase)
-Expandir o schema atual para suportar todas as funcionalidades:
+**Novas tabelas / colunas**
+- `services` — catálogo de serviços da agência (`name`, `description`, `default_price`, `is_active`).
+- `client_services` — N:N entre `clients` e `services` (com `monthly_price` opcional, `started_at`).
+- `client_status` enum: garantir valores PT-BR + `paused` (`active`, `paused`, `inactive`, `prospect`).
+- `client_collaborators` — N:N direto cliente↔colaborador (gerada via time, mas também manual).
 
-- **profiles** (ligada a `auth.users`): name, email, avatar_url, phone, bio, position (cargo), birth_date, skills[], hourly_rate, contract_start, contract_end, status
-- **user_roles** (já existe): manter padrão `app_role` enum = `leader | manager | collaborator`
-- **teams**: id, name, description, leader_id, color, created_at
-- **team_members** (N:N): team_id, user_id, role_in_team (`manager | member`) — permite múltiplos times por colaborador
-- **clients**: ampliar com phone, contract_start, contract_end, satisfaction, notes
-- **client_team** (N:N): client_id, team_id
-- **tasks**: ampliar com created_by, recurrence (jsonb), parent_task_id, template_id
-- **task_assignees** (N:N): task_id, user_id (caso queira múltiplos)
-- **task_templates**: para recorrência
-- **expenses**: id, category, amount, date, description, created_by, client_id
-- **finance_settings**: chave/valor (jsonb) com cash adjustments, custom categories
-- **client_satisfaction_history**: client_id, rating, recorded_at
-- Trigger `handle_new_user` para criar profile automaticamente no signup
-- RLS em todas as tabelas usando função `has_role()`
+**Funções / triggers**
+- `sync_client_collaborators_from_team()` — quando `client_teams` muda, recalcula `client_collaborators` para membros `manager`/`leader` daquele time.
+- Trigger em `clients` que, se `status` virar `paused`/`inactive`, remove vínculos em `client_collaborators`.
+- Trigger em `tasks` (`assignee_id`) → cria `notifications` para o responsável (criada/atualizada/concluída).
+- RLS de `notifications`: apenas o dono lê (já está); garantir inserts via trigger SECURITY DEFINER.
 
-### 2. Autenticação
-- Login real via `supabase.auth.signInWithPassword` (email + senha)
-- Remover lista de contas demo da tela de login
-- Tela de cadastro de funcionário (Líder/Gerente cria): chama edge function `create-user` que usa `supabase.auth.admin.createUser` → cria profile + atribui role + adiciona aos times selecionados
-- Edge function necessária pois `auth.admin` requer service_role key
+**RLS**
+- `services`: SELECT autenticado; INSERT/UPDATE/DELETE só `leader`.
+- `client_services`: SELECT autenticado; INSERT/UPDATE/DELETE só `leader`.
+- `client_collaborators`: SELECT autenticado; modificação `leader`/`manager`.
+- `client_satisfaction_history`: liberar INSERT para qualquer autenticado (não só admin).
 
-### 3. Frontend — remover 100% dos mocks
-- Substituir `AppStore` (Context com mock) por hooks que consomem Supabase via TanStack Query
-- Real-time subscriptions onde fizer sentido (tasks, comments, notifications)
-- Todas as páginas (Kanban, Clientes, Times, Equipe, Relatórios, Finanças, Perfil) buscando do banco
-- Loading states e error states em todas as telas
+**Storage**
+- Bucket público `avatars` + policies (upload na própria pasta `auth.uid()/...`).
 
-### 4. Times — múltipla participação
-- Tela de Times usa `team_members` (N:N), colaborador pode pertencer a vários
-- Ao criar/editar time, multi-select de membros e gerentes
+---
 
-### 5. Funcionários (renomeado "Colaboradores")
-- Página `/team` vira CRUD completo: criar com email+senha+cargo+role+times+contrato
-- Edição de cargo, desativação, reset de senha
+## 2. Bug de role no edge function `create-user`
+Atualmente: provavelmente o `handle_new_user` insere `collaborator` por padrão e o edge function não substitui corretamente. Corrigir: depois de criar o auth user, **deletar** `user_roles` default e inserir o role escolhido (`leader`/`manager`/`collaborator`). Garantir que body é parseado certo.
 
-### 6. Responsividade Mobile
-- Sidebar vira drawer no mobile (já existe `Sheet` no shadcn)
-- Kanban: scroll horizontal de colunas com snap
-- Tabelas viram cards no mobile (Clientes, Equipe, Finanças)
-- Diálogos full-screen no mobile
-- Touch targets ≥44px, tipografia escalada
-- Bottom nav opcional para ações principais
+---
 
-### 7. SQL Final
-Entregarei um script único `migration.sql` com:
-- CREATE TABLE / ALTER TABLE para tudo que falta
-- Enums (`app_role`, `team_role`, `task_status`, etc.)
-- Função `has_role` + trigger `handle_new_user`
-- Políticas RLS completas
-- Comando separado para promover seu usuário a Líder após primeiro signup:
-  ```sql
-  -- Após criar sua conta pela tela de signup (ou via Auth dashboard):
-  INSERT INTO user_roles (user_id, role)
-  SELECT id, 'leader' FROM auth.users WHERE email = 'SEU_EMAIL_AQUI';
-  ```
+## 3. Frontend
+
+### 3.1 Permissões (esconder financeiro de manager/collaborator)
+- Sidebar: `Finance`, `Reports > Financeiro` só para `leader`.
+- `ClientDetail`: campos `monthly_value`, "Receita/mês" e mensalidade só visíveis para `leader`.
+- `TeamMemberDetail`/perfil de colaborador: esconder `salary`, `hourly_rate`, `tax_rate` para não-líder.
+- Manager ganha acesso a: Times, Colaboradores, Clientes, Kanban (sem financeiro).
+
+### 3.2 `/reports/tasks` paginação
+- Paginação client-side de 20 em 20, usando `<Pagination>` do shadcn (Prev/Next + números).
+
+### 3.3 Notificações individuais
+- `NotificationsBell` lê de `notifications` via Supabase filtrando `user_id = auth.uid()`, com realtime subscription.
+- Marcar como lida → `UPDATE notifications SET read = true`.
+
+### 3.4 Tela de Equipe / detalhe do colaborador
+- Botão "Remover colaborador" (líder): chama edge function `delete-user` (a criar) que apaga do auth + profiles + user_roles.
+- Seção "Clientes vinculados": multi-select de clientes → grava em `client_collaborators`.
+
+### 3.5 Times (`/teams` ou `TeamsDB`)
+- Adicionar seção "Clientes do time" com multi-select → `client_teams`.
+- Trigger no DB cuida de sincronizar `client_collaborators`.
+
+### 3.6 Clientes
+- Status em PT-BR: Ativo, Pausado, Inativo, Prospect.
+- Quando muda para Pausado/Inativo: trigger remove vínculos.
+- "Equipe envolvida" agora vem de `client_collaborators` (join com profiles).
+- Satisfação editável por **todos** (colaborador/gerente/líder) → grava em `client_satisfaction_history` e atualiza `clients.satisfaction`.
+- Seção "Serviços contratados": multi-select de `services`. Editável só por líder; visível a todos.
+
+### 3.7 Serviços
+- Nova página `/services` (só líder pode acessar editar; manager/collaborator veem read-only).
+- CRUD com nome, descrição, preço.
+
+### 3.8 Perfil (`/profile`)
+- Upload de avatar → bucket `avatars`. Substituir input de URL por `<input type="file">`.
+- Seção "Senha": mostrar email + 2 campos (nova senha + confirmação) usando `supabase.auth.updateUser({ password })`. Não dá para "ver senha atual" (auth não expõe hash) — vou explicar isso e oferecer apenas "alterar senha".
+- Salvar dados em `profiles` (não no mock store).
+
+### 3.9 Colaboradores (`/collaborators`)
+- Botão remover (líder).
+- Editar role inline.
+
+---
+
+## 4. SQL final
+No fim, entrego um script SQL único que o usuário pode rodar manualmente no Supabase para sincronizar (caso a migration automática falhe), + comando para promover líder.
+
+---
 
 ## Detalhes técnicos
-- Edge function `create-user` em `supabase/functions/create-user/index.ts` usa SERVICE_ROLE_KEY (já disponível no Cloud) — verifica caller é leader/manager via JWT
-- Storage bucket `avatars` para fotos de perfil
-- TanStack Query já instalado; usar `useQuery`/`useMutation` por entidade
-- Tipos TypeScript gerados a partir do schema em `src/integrations/supabase/types.ts` (auto-gerado)
+- Migration única com tudo (tabelas, triggers, RLS, bucket).
+- Edge function `delete-user` usando service role.
+- Hook `useCurrentRole()` em `AuthContext` já existe (`is_leader`, `is_manager`).
+- Realtime: `supabase.channel('notif').on('postgres_changes', { table: 'notifications', filter: 'user_id=eq.<uid>' })`.
 
-## Perguntas antes de começar
+---
 
-**Esta migração é grande (~2-4h de execução, vários arquivos).** Preciso confirmar:
+## Sobre "ver senha atual"
+O Supabase **não permite** ver a senha atual do usuário (ela é hash bcrypt). Vou implementar apenas "alterar senha" (com confirmação da nova). Se quiser segurança extra, pedimos a senha atual e fazemos um `signInWithPassword` silencioso para validar antes de trocar — confirma se prefere assim?
 
-1. **Posso apagar o `AppStore` atual e os dados mock** (`src/data/mock.ts`)? Tudo passa a vir do banco e o banco começa vazio (exceto o Líder que você criar).
+---
 
-2. **Login**: prefere que eu **mantenha uma tela de signup pública** (qualquer um cria conta, mas sem role até líder aprovar) ou **apenas líder/gerente cria** funcionários (signup público desabilitado)?
+## Ordem de execução
+1. Migration SQL (tabelas, triggers, bucket, RLS).
+2. Edge functions (`create-user` fix, `delete-user` novo).
+3. Frontend: AuthContext/permissões → Sidebar → páginas (Profile, Collaborators, Clients, ClientDetail, Teams, Services nova, Reports).
+4. Notificações realtime.
+5. SQL final consolidado para o usuário.
 
-3. **Posso seguir e quebrar em commits parciais** (fase 1: schema + auth, fase 2: páginas, fase 3: mobile)? Isso evita uma resposta gigante quebrar tudo de uma vez.
-
-4. **Sobre o "Líder inicial"**: você quer **criar a conta pela própria tela de signup** e depois rodar o SQL para virar líder, ou prefere que eu te entregue um SQL que **cria o usuário direto no `auth.users`** (mais complexo, requer função `crypt`)?
-
-Responda essas 4 perguntas e eu sigo direto na implementação.
+Pode confirmar 2 pontos antes de começar?
+- (a) "Ver senha atual" — confirmo que não é possível, vou implementar **alterar senha com confirmação da senha atual** (mais seguro). OK?
+- (b) Manager pode **criar/remover colaboradores** (sem mexer em líder) ou só líder?

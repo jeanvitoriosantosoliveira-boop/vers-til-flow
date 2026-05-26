@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, UserPlus, Shield, Crown } from "lucide-react";
+import { Plus, UserPlus, Shield, Crown, Trash2 } from "lucide-react";
 
 type Profile = {
   id: string; name: string; email: string; avatar_url: string | null;
@@ -43,6 +43,15 @@ export default function Collaborators() {
   useEffect(() => { load(); }, []);
 
   const isAdmin = user?.is_manager || user?.is_leader;
+  const isLeader = !!user?.is_leader;
+
+  async function removeCollaborator(uid: string, name: string) {
+    if (!confirm(`Remover ${name}? Esta ação é permanente.`)) return;
+    const { data, error } = await supabase.functions.invoke("delete-user", { body: { user_id: uid } });
+    if (error || (data as any)?.error) return toast.error((data as any)?.error ?? error?.message ?? "Erro");
+    toast.success("Colaborador removido");
+    load();
+  }
 
   function roleOf(uid: string): "leader" | "manager" | "collaborator" {
     const rs = roles.filter(x => x.user_id === uid).map(x => x.role);
@@ -98,6 +107,11 @@ export default function Collaborators() {
                   <p className="text-xs text-muted-foreground truncate">{p.position ?? "—"}</p>
                   <p className="text-xs text-muted-foreground truncate">{p.email}</p>
                 </div>
+                {isLeader && p.id !== user?.id && (
+                  <Button size="icon" variant="ghost" onClick={() => removeCollaborator(p.id, p.name)} title="Remover">
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                )}
               </Card>
             );
           })}
