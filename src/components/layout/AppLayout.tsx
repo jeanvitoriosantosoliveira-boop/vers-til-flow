@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -18,9 +18,10 @@ const nav = [
   { to: "/kanban", label: "Kanban", icon: KanbanSquare },
   { to: "/reports", label: "Relatórios", icon: BarChart3 },
   { to: "/clients", label: "Clientes", icon: Users },
-  { to: "/team", label: "Equipe", icon: UserCog, leaderOnly: true },
-  { to: "/collaborators", label: "Colaboradores", icon: UserPlus, leaderOnly: true },
-  { to: "/teams", label: "Times", icon: Network, leaderOnly: true },
+  { to: "/team", label: "Equipe", icon: UserCog, managerOrLeader: true },
+  { to: "/collaborators", label: "Colaboradores", icon: UserPlus, managerOrLeader: true },
+  { to: "/teams", label: "Times", icon: Network, managerOrLeader: true },
+  { to: "/services", label: "Serviços", icon: Briefcase, managerOrLeader: true },
   { to: "/finance", label: "Financeiro", icon: Wallet, leaderOnly: true },
   { to: "/time", label: "Tempo", icon: Timer },
 ];
@@ -52,7 +53,13 @@ export function AppLayout() {
         </div>
 
         <nav className="space-y-1 flex-1">
-          {nav.filter(n => !n.leaderOnly || currentUser.role === "leader").map(({ to, label, icon: Icon, end }) => (
+          {nav.filter(n => {
+            const isLeader = currentUser.role === "leader";
+            const isManager = currentUser.is_manager;
+            if ((n as any).leaderOnly && !isLeader) return false;
+            if ((n as any).managerOrLeader && !isLeader && !isManager) return false;
+            return true;
+          }).map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
