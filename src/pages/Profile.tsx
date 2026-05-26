@@ -32,11 +32,12 @@ export default function Profile() {
   async function save() {
     if (!user?.id) return;
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({
+    const patch: any = {
       name: draft.name, phone: draft.phone, bio: draft.bio, position: draft.position,
       birth_date: draft.birth_date || null, city: draft.city, skills: draft.skills ?? [],
       avatar_url: draft.avatar_url,
-    }).eq("id", user.id);
+    };
+    const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success("Perfil atualizado");
