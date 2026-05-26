@@ -417,9 +417,26 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
   }, [usingBackend]);
 
-  const authUserId = user?.id ?? users[0]?.id;
-  const fromList = users.find(u => u.id === authUserId);
-  const currentUser: User = fromList ?? (user
+const authUserId = user?.id ?? null;
+
+const fromList = users.find(u => u.id === authUserId);
+
+// 🚨 fallback SEGURO
+const safeUser: User = {
+  id: "guest",
+  name: "Usuário",
+  email: "",
+  role: "employee",
+  avatar_url: null,
+  is_manager: false,
+  team_ids: [],
+  team_id: null,
+};
+
+// ✅ nunca mais será undefined
+const currentUser: User =
+  fromList ??
+  (user
     ? {
         id: user.id,
         name: user.name,
@@ -429,8 +446,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         is_manager: user.is_manager,
         team_ids: [],
         team_id: null,
-      } as any
-    : users[0]);
+      }
+    : safeUser);
 
   const createTask = useCallback(async (data: Partial<Task>) => {
     const now = new Date().toISOString();

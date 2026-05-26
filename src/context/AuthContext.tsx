@@ -26,43 +26,23 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
-async function loadAppUser(supaUser: SupaUser | null): Promise<AuthUser | null> {
-  if (!supaUser?.id) return null;
-
-  try {
-    const [{ data: profile }, { data: roles }] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("name, avatar_url, position")
-        .eq("id", supaUser.id)
-        .maybeSingle(),
-      supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", supaUser.id),
-    ]);
-
-    const roleList = (roles ?? []).map((r: any) => r.role as AppRole);
-    const role: AppRole = roleList.includes("leader") 
-      ? "leader" 
-      : roleList.includes("manager") 
-        ? "manager" 
-        : "collaborator";
-
-    return {
-      id: supaUser.id,
-      email: supaUser.email ?? "",
-      name: profile?.name ?? supaUser.email?.split("@")[0] ?? "Usuário",
-      avatar_url: profile?.avatar_url,
-      position: profile?.position,
-      role,
-      is_leader: role === "leader",
-      is_manager: role === "manager" || role === "leader",
-    };
-  } catch (err) {
-    console.error("Erro ao carregar perfil do usuário:", err);
-    return null;
-  }
+async function loadAppUser(supaUser: SupaUser): Promise<AuthUser> {
+  const [{ data: profile }, { data: roles }] = await Promise.all([
+    supabase.from("profiles").select("name, avatar_url, position").eq("id", supaUser.id).maybeSingle(),
+    supabase.from("user_roles").select("role").eq("user_id", supaUser.id),
+  ]);
+  const roleList = (roles ?? []).map((r: any) => r.role as AppRole);
+  const role: AppRole = roleList.includes("leader") ? "leader" : roleList.includes("manager") ? "manager" : "collaborator";
+  return {
+    id: supaUser.id,
+    email: supaUser.email ?? "",
+    name: profile?.name ?? supaUser.email?.split("@")[0] ?? "Usuário",
+    avatar_url: profile?.avatar_url,
+    position: profile?.position,
+    role,
+    is_leader: role === "leader",
+    is_manager: role === "manager" || role === "leader",
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -71,45 +51,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Carregar sessão inicial
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session);
-      if (data.session?.user) {
-        const appUser = await loadAppUser(data.session.user);
-        setUser(appUser);
-      }
-      setReady(true);
-    });
-
-    // Listener de mudança de autenticação
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
-      
       if (s?.user) {
-        const appUser = await loadAppUser(s.user);
-        setUser(appUser);
+        // defer profile loading to avoid deadlock with the auth callback
+        setTimeout(() => { loadAppUser(s.user).then(setUser); }, 0);
       } else {
         setUser(null);
       }
     });
-
-    return () => {
-      sub.subscription.unsubscribe();
-    };
+    supabase.auth.getSession().then(async ({ data }) => {
+      setSession(data.session);
+      if (data.session?.user) setUser(await loadAppUser(data.session.user));
+      setReady(true);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   async function login(email: string, password: string) {
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ 
-        email: email.trim(), 
-        password 
-      });
-      
-      if (error) return { ok: false, error: error.message };
-      return { ok: true };
-    } catch (err: any) {
-      return { ok: false, error: err.message || "Erro ao fazer login" };
-    }
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
   }
 
   async function logout() {
@@ -118,19 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function refresh() {
     const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      const appUser = await loadAppUser(data.user);
-      setUser(appUser);
-    } else {
-      setUser(null);
-    }
+    if (data.user) setUser(await loadAppUser(data.user));
   }
 
-  return (
-    <Ctx.Provider value={{ user, session, ready, login, logout, refresh }}>
-      {children}
-    </Ctx.Provider>
-  );
+  return <Ctx.Provider value={{ user, session, ready, login, logout, refresh }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {
