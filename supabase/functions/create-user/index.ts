@@ -66,10 +66,12 @@ Deno.serve(async (req) => {
       name, position, phone, hourly_rate, contract_start, contract_end,
     }).eq('id', newUserId);
 
-    // Set role (default trigger already inserted 'collaborator')
-    if (role !== 'collaborator') {
-      await admin.from('user_roles').delete().eq('user_id', newUserId);
-      await admin.from('user_roles').insert({ user_id: newUserId, role });
+    // Always replace any default role inserted by handle_new_user with the chosen one
+    {
+      const delRes = await admin.from('user_roles').delete().eq('user_id', newUserId);
+      if (delRes.error) console.error('delete role failed', delRes.error);
+      const insRes = await admin.from('user_roles').insert({ user_id: newUserId, role });
+      if (insRes.error) console.error('insert role failed', insRes.error);
     }
 
     // Add to teams
