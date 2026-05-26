@@ -1,18 +1,25 @@
+import { useEffect, useState } from "react";
 import { Bell, CheckCheck, Trash2, ListTodo, RefreshCw, CheckCircle2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useNotifications, type Notification } from "@/context/NotificationsContext";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 
-const icon: Record<Notification["type"], any> = {
+type DBNotification = {
+  id: string; title: string; body: string | null; type: string;
+  created_at: string; read: boolean; user_id: string | null;
+};
+
+const icon: Record<string, any> = {
   task_created: ListTodo,
   task_updated: RefreshCw,
   task_done: CheckCircle2,
   info: Info,
 };
-const tone: Record<Notification["type"], string> = {
+const tone: Record<string, string> = {
   task_created: "text-primary bg-primary/10",
   task_updated: "text-warning bg-warning/10",
   task_done: "text-success bg-success/10",
@@ -20,7 +27,47 @@ const tone: Record<Notification["type"], string> = {
 };
 
 export function NotificationsBell() {
-  const { notifications, unread, markAllRead, clear } = useNotifications();
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<DBNotification[]>([]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .then(({ data }) => { if (!cancelled && data) setNotifications(data as any); });
+
+    const ch = supabase
+      .channel(`notif-${user.id}`)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        (payload) => setNotifications(prev => [payload.new as any, ...prev].slice(0, 50)))
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        (payload) => setNotifications(prev => prev.map(n => n.id === (payload.new as any).id ? payload.new as any : n)))
+      .subscribe();
+
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [user?.id]);
+
+  const unread = notifications.filter(n => !n.read).length;
+
+  async function markAllRead() {
+    if (!user?.id || unread === 0) return;
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+  }
+  async function clear() {
+    if (!user?.id) return;
+    const ids = notifications.map(n => n.id);
+    setNotifications([]);
+    if (ids.length) await supabase.from("notifications").delete().in("id", ids);
+  }
+
   return (
     <Popover onOpenChange={(o) => o && unread > 0 && setTimeout(markAllRead, 1500)}>
       <PopoverTrigger asChild>
