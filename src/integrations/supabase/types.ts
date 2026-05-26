@@ -52,6 +52,55 @@ export type Database = {
           },
         ]
       }
+      client_collaborators: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          source: string
+          team_id: string | null
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          source?: string
+          team_id?: string | null
+          user_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          source?: string
+          team_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_collaborators_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_collaborators_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_collaborators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_satisfaction_history: {
         Row: {
           client_id: string
@@ -87,6 +136,48 @@ export type Database = {
             columns: ["recorded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_services: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          monthly_price: number | null
+          service_id: string
+          started_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          monthly_price?: number | null
+          service_id: string
+          started_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          monthly_price?: number | null
+          service_id?: string
+          started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_services_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_services_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
             referencedColumns: ["id"]
           },
         ]
@@ -363,6 +454,33 @@ export type Database = {
           position?: string | null
           skills?: string[] | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      services: {
+        Row: {
+          created_at: string
+          default_price: number | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          default_price?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string
+          default_price?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
         }
         Relationships: []
       }
