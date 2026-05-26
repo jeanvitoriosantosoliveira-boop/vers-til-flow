@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export default function Profile() {
   const { user, refresh } = useAuth();
-  const [draft, setDraft] = useState<any>({});
+  const [draft, setDraft] = useState<Record<string, any>>({});
   const [skillInput, setSkillInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
