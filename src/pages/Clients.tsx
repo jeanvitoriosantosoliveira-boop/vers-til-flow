@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Building2, ChevronRight, Star, AlertTriangle } from "lucide-react";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -82,7 +82,9 @@ export default function Clients() {
         actions={
           <>
             <PeriodFilter value={period} onChange={setPeriod} />
-            <Button onClick={() => setOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo cliente</Button>
+            {isLeader && (
+              <Button onClick={() => setOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo cliente</Button>
+            )}
           </>
         }
       />
@@ -169,7 +171,10 @@ export default function Clients() {
 
       <Dialog open={open && isLeader} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Novo cliente</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Novo cliente</DialogTitle>
+            <DialogDescription>Preencha os dados para cadastrar uma nova empresa cliente.</DialogDescription>
+          </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">
             <div><Label>Nome</Label><Input value={form.name ?? ""} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Empresa</Label><Input value={form.company ?? ""} onChange={e => setForm({ ...form, company: e.target.value })} /></div>

@@ -249,7 +249,44 @@ CREATE POLICY notif_insert_admin ON public.notifications
   FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id OR public.has_role(auth.uid(), 'leader'::app_role));
 
--- 13) Financeiro restrito ao líder
+-- 13) Satisfação do cliente liberada para qualquer perfil autenticado
+DROP POLICY IF EXISTS csh_select_auth ON public.client_satisfaction_history;
+CREATE POLICY csh_select_auth ON public.client_satisfaction_history
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS csh_insert_admin ON public.client_satisfaction_history;
+DROP POLICY IF EXISTS csh_insert_auth ON public.client_satisfaction_history;
+CREATE POLICY csh_insert_auth ON public.client_satisfaction_history
+  FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = recorded_by OR recorded_by IS NULL);
+
+CREATE OR REPLACE FUNCTION public.set_client_satisfaction(p_client_id uuid, p_rating integer)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_rating < 1 OR p_rating > 5 THEN
+    RAISE EXCEPTION 'A satisfação deve estar entre 1 e 5.';
+  END IF;
+
+  UPDATE public.clients
+  SET satisfaction = p_rating
+  WHERE id = p_client_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Cliente não encontrado.';
+  END IF;
+
+  INSERT INTO public.client_satisfaction_history (client_id, rating, recorded_by)
+  VALUES (p_client_id, p_rating, auth.uid());
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_client_satisfaction(uuid, integer) TO authenticated;
+
+-- 14) Financeiro restrito ao líder
 DROP POLICY IF EXISTS exp_admin ON public.expenses;
 CREATE POLICY exp_admin ON public.expenses FOR ALL TO authenticated
   USING (public.has_role(auth.uid(), 'leader'::app_role))
@@ -265,7 +302,7 @@ CREATE POLICY fset_admin ON public.finance_settings FOR ALL TO authenticated
   USING (public.has_role(auth.uid(), 'leader'::app_role))
   WITH CHECK (public.has_role(auth.uid(), 'leader'::app_role));
 
--- 14) Realtime notificações
+-- 15) Realtime notificações
 ALTER TABLE public.notifications REPLICA IDENTITY FULL;
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -276,5 +313,5 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- 15) Recarrega API REST (PostgREST)
+-- 16) Recarrega API REST (PostgREST)
 NOTIFY pgrst, 'reload schema';

@@ -969,24 +969,25 @@ const currentUser: User =
 
   const setClientSatisfaction = useCallback(async (id: string, value: number, note?: string) => {
     const monthKey = new Date().toISOString().slice(0,7);
+    const previousClients = clients;
     setClients(prev => prev.map(c => {
       if (c.id !== id) return c;
       const hist = (c.satisfaction_history ?? []).filter(h => h.month !== monthKey);
       return { ...c, satisfaction: value, satisfaction_history: [...hist, { month: monthKey, value, note }].sort((a,b) => a.month.localeCompare(b.month)) };
     }));
     if (usingBackend) {
-      const [{ error: clientError }, { error: historyError }] = await Promise.all([
-        db.from("clients").update({ satisfaction: value }).eq("id", id),
-        db.from("client_satisfaction_history").insert({ client_id: id, rating: value, recorded_by: currentUser.id }),
-      ]);
-      const error = clientError || historyError;
+      const { error } = await (db as any).rpc("set_client_satisfaction", {
+        p_client_id: id,
+        p_rating: value,
+      });
       if (error) {
+        setClients(previousClients);
         toast.error("Erro ao salvar satisfação", { description: error.message });
         return;
       }
     }
     toast.success("Satisfação atualizada", { description: `${value.toFixed(1)} / 5` });
-  }, [currentUser.id, usingBackend]);
+  }, [clients, usingBackend]);
 
   const addCustomCategory = useCallback((label: string) => {
     const key = "cat_" + label.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 20) + "_" + uid().slice(0, 4);
