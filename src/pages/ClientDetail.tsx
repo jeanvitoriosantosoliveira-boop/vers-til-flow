@@ -37,17 +37,10 @@ export default function ClientDetail() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [linkedServices, setLinkedServices] = useState<{ id: string; service_id: string; monthly_price: number; service?: { name: string } }[]>([]);
   const [catalogServices, setCatalogServices] = useState<{ id: string; name: string }[]>([]);
-  const [involvedUsers, setInvolvedUsers] = useState<{ id: string; user_id: string; source: string; profile?: { id: string; name: string; position?: string | null } }[]>([]);
-
-  if (!client) return (
-    <div className="max-w-3xl mx-auto py-12 text-center">
-      <p className="text-muted-foreground mb-4">Cliente não encontrado.</p>
-      <Button onClick={() => navigate("/clients")}>Voltar</Button>
-    </div>
-  );
+  const [involvedUsers, setInvolvedUsers] = useState<{ id: string; user_id: string; source: string; profile?: { id: string; name: string; position?: string | null; avatar_url?: string | null } }[]>([]);
 
   const isLeader = currentUser.role === "leader";
-  const clientTasks = tasks.filter(t => t.client_id === client.id);
+  const clientTasks = client ? tasks.filter(t => t.client_id === client.id) : [];
   const done = clientTasks.filter(t => t.status === "done").length;
   const inProgress = clientTasks.filter(t => t.status === "in_progress").length;
   const late = clientTasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "done").length;
@@ -58,12 +51,12 @@ export default function ClientDetail() {
   const monthSeconds = clientEntries.filter(e => new Date(e.logged_at) >= monthStart).reduce((s,e) => s+e.seconds, 0);
   const totalSeconds = clientEntries.reduce((s,e) => s+e.seconds, 0);
   const monthHours = monthSeconds / 3600;
-  const target = client.monthly_hours_target ?? 40;
+  const target = client?.monthly_hours_target ?? 40;
   const usagePct = Math.min(200, Math.round((monthHours / target) * 100));
   const overTarget = monthHours > target;
 
   // Custo (R$/h estimado a partir da mensalidade)
-  const fee = client.monthly_fee ?? 0;
+  const fee = client?.monthly_fee ?? 0;
   const ratePerHour = target > 0 ? fee / target : 0;
   const monthCost = monthHours * ratePerHour;
   const profit = fee - monthCost;
@@ -87,7 +80,7 @@ export default function ClientDetail() {
       .filter(x => x.user).sort((a,b) => b.seconds - a.seconds);
   }, [clientEntries, users]);
 
-  const health = healthMap[client.health ?? "good"];
+  const health = healthMap[client?.health ?? "good"];
 
   async function loadLinks() {
     if (!client?.id) return;
@@ -102,6 +95,13 @@ export default function ClientDetail() {
   }
 
   useEffect(() => { loadLinks(); }, [client?.id]);
+
+  if (!client) return (
+    <div className="max-w-3xl mx-auto py-12 text-center">
+      <p className="text-muted-foreground mb-4">Cliente não encontrado.</p>
+      <Button onClick={() => navigate("/clients")}>Voltar</Button>
+    </div>
+  );
 
   async function linkService(serviceId: string) {
     const svc = catalogServices.find(s => s.id === serviceId);
