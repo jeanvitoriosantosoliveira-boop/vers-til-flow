@@ -365,6 +365,147 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_activities: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          kind: string
+          lead_id: string
+          occurred_at: string
+          user_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id: string
+          occurred_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id?: string
+          occurred_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_stages: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          is_lost: boolean
+          is_won: boolean
+          name: string
+          position: number
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          is_lost?: boolean
+          is_won?: boolean
+          name: string
+          position?: number
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          is_lost?: boolean
+          is_won?: boolean
+          name?: string
+          position?: number
+        }
+        Relationships: []
+      }
+      leads: {
+        Row: {
+          company: string | null
+          created_at: string
+          email: string | null
+          estimated_value: number | null
+          id: string
+          name: string
+          next_followup_at: string | null
+          notes: string | null
+          owner_id: string | null
+          phone: string | null
+          source: string | null
+          stage_id: string | null
+          updated_at: string
+          whatsapp: string | null
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          email?: string | null
+          estimated_value?: number | null
+          id?: string
+          name: string
+          next_followup_at?: string | null
+          notes?: string | null
+          owner_id?: string | null
+          phone?: string | null
+          source?: string | null
+          stage_id?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          email?: string | null
+          estimated_value?: number | null
+          id?: string
+          name?: string
+          next_followup_at?: string | null
+          notes?: string | null
+          owner_id?: string | null
+          phone?: string | null
+          source?: string | null
+          stage_id?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "lead_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           body: string | null
@@ -457,6 +598,63 @@ export type Database = {
         }
         Relationships: []
       }
+      sales_events: {
+        Row: {
+          created_at: string
+          end_at: string | null
+          id: string
+          kind: string
+          lead_id: string | null
+          link: string | null
+          location: string | null
+          notes: string | null
+          owner_id: string | null
+          start_at: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          end_at?: string | null
+          id?: string
+          kind?: string
+          lead_id?: string | null
+          link?: string | null
+          location?: string | null
+          notes?: string | null
+          owner_id?: string | null
+          start_at: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          end_at?: string | null
+          id?: string
+          kind?: string
+          lead_id?: string | null
+          link?: string | null
+          location?: string | null
+          notes?: string | null
+          owner_id?: string | null
+          start_at?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_events_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           created_at: string
@@ -483,6 +681,113 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      studio_expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          occurred_on: string
+          title: string
+        }
+        Insert: {
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          occurred_on?: string
+          title: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          occurred_on?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_expenses_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studio_sessions: {
+        Row: {
+          artist_name: string | null
+          client_id: string | null
+          created_at: string
+          created_by: string | null
+          hourly_rate: number
+          hours: number
+          id: string
+          notes: string | null
+          payment_status: string
+          session_date: string
+          start_time: string | null
+          title: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          artist_name?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          hourly_rate?: number
+          hours?: number
+          id?: string
+          notes?: string | null
+          payment_status?: string
+          session_date?: string
+          start_time?: string | null
+          title: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          artist_name?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          hourly_rate?: number
+          hours?: number
+          id?: string
+          notes?: string | null
+          payment_status?: string
+          session_date?: string
+          start_time?: string | null
+          title?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_sessions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "studio_sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tasks: {
         Row: {
@@ -723,10 +1028,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_commercial: { Args: { _user_id: string }; Returns: boolean }
       is_leader_or_manager: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "leader" | "manager" | "collaborator"
+      app_role: "leader" | "manager" | "collaborator" | "commercial"
       client_status: "active" | "paused" | "archived"
       task_priority: "low" | "medium" | "high" | "urgent"
       task_status: "todo" | "in_progress" | "review" | "done"
@@ -858,7 +1164,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["leader", "manager", "collaborator"],
+      app_role: ["leader", "manager", "collaborator", "commercial"],
       client_status: ["active", "paused", "archived"],
       task_priority: ["low", "medium", "high", "urgent"],
       task_status: ["todo", "in_progress", "review", "done"],

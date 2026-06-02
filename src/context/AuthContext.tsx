@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { supabase } from "@/integrations/supabase/client";
 import type { Session, User as SupaUser } from "@supabase/supabase-js";
 
-export type AppRole = "leader" | "manager" | "collaborator";
+export type AppRole = "leader" | "manager" | "collaborator" | "commercial";
 
 export interface AuthUser {
   id: string;
@@ -13,6 +13,7 @@ export interface AuthUser {
   role: AppRole;
   is_manager: boolean;
   is_leader: boolean;
+  is_commercial: boolean;
 }
 
 interface AuthState {
@@ -32,7 +33,13 @@ async function loadAppUser(supaUser: SupaUser): Promise<AuthUser> {
     supabase.from("user_roles").select("role").eq("user_id", supaUser.id),
   ]);
   const roleList = (roles ?? []).map((r: any) => r.role as AppRole);
-  const role: AppRole = roleList.includes("leader") ? "leader" : roleList.includes("manager") ? "manager" : "collaborator";
+  const role: AppRole = roleList.includes("leader")
+    ? "leader"
+    : roleList.includes("manager")
+    ? "manager"
+    : roleList.includes("commercial")
+    ? "commercial"
+    : "collaborator";
   return {
     id: supaUser.id,
     email: supaUser.email ?? "",
@@ -42,6 +49,7 @@ async function loadAppUser(supaUser: SupaUser): Promise<AuthUser> {
     role,
     is_leader: role === "leader",
     is_manager: role === "manager" || role === "leader",
+    is_commercial: role === "commercial",
   };
 }
 

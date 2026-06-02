@@ -23,6 +23,10 @@ import ReportDetail from "./pages/ReportDetail";
 import TimeTracking from "./pages/TimeTracking";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
+import Studio from "./pages/Studio";
+import SalesFunnel from "./pages/SalesFunnel";
+import SalesAgenda from "./pages/SalesAgenda";
+import SalesDashboard from "./pages/SalesDashboard";
 import NotFound from "./pages/NotFound.tsx";
 import type { ReactNode } from "react";
 
@@ -33,6 +37,12 @@ function Protected({ children }: { children: ReactNode }) {
   if (!ready) return null;
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
+}
+
+function HomeRoute() {
+  const { user } = useAuth();
+  if (user?.role === "commercial") return <Navigate to="/sales/dashboard" replace />;
+  return <Dashboard />;
 }
 
 const App = () => (
@@ -49,7 +59,7 @@ const App = () => (
                   <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route element={<Protected><AppLayout /></Protected>}>
-                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/" element={<HomeRoute />} />
                       <Route path="/kanban" element={<Kanban />} />
                       <Route path="/reports" element={<Reports />} />
                       <Route path="/reports/:type" element={<ReportDetail />} />
@@ -62,6 +72,10 @@ const App = () => (
                       <Route path="/finance" element={<Finance />} />
                       <Route path="/time" element={<TimeTracking />} />
                       <Route path="/profile" element={<Profile />} />
+                      <Route path="/studio" element={<Studio />} />
+                      <Route path="/sales" element={<SalesFunnel />} />
+                      <Route path="/sales/agenda" element={<SalesAgenda />} />
+                      <Route path="/sales/dashboard" element={<SalesDashboard />} />
                     </Route>
                     <Route path="*" element={<NotFound />} />
                   </Routes>

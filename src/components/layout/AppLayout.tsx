@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase, Music2, Target, CalendarDays } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -13,17 +13,25 @@ import { useSearch } from "@/context/SearchContext";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-const nav = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/kanban", label: "Kanban", icon: KanbanSquare },
-  { to: "/reports", label: "Relatórios", icon: BarChart3 },
-  { to: "/clients", label: "Clientes", icon: Users },
-  { to: "/team", label: "Equipe", icon: UserCog, managerOrLeader: true },
-  { to: "/collaborators", label: "Colaboradores", icon: UserPlus, managerOrLeader: true },
-  { to: "/teams", label: "Times", icon: Network, managerOrLeader: true },
-  { to: "/services", label: "Serviços", icon: Briefcase, managerOrLeader: true },
-  { to: "/finance", label: "Financeiro", icon: Wallet, leaderOnly: true },
-  { to: "/time", label: "Tempo", icon: Timer },
+type NavItem = { to: string; label: string; icon: any; end?: boolean; roles: Array<"leader"|"manager"|"collaborator"|"commercial"> };
+
+const nav: NavItem[] = [
+  // Operacional
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, roles: ["leader","manager","collaborator"] },
+  { to: "/kanban", label: "Kanban", icon: KanbanSquare, roles: ["leader","manager","collaborator"] },
+  { to: "/reports", label: "Relatórios", icon: BarChart3, roles: ["leader","manager","collaborator"] },
+  { to: "/clients", label: "Clientes", icon: Users, roles: ["leader","manager","collaborator"] },
+  { to: "/team", label: "Equipe", icon: UserCog, roles: ["leader","manager"] },
+  { to: "/collaborators", label: "Colaboradores", icon: UserPlus, roles: ["leader","manager"] },
+  { to: "/teams", label: "Times", icon: Network, roles: ["leader","manager"] },
+  { to: "/services", label: "Serviços", icon: Briefcase, roles: ["leader","manager"] },
+  { to: "/finance", label: "Financeiro", icon: Wallet, roles: ["leader"] },
+  { to: "/studio", label: "Studio", icon: Music2, roles: ["leader"] },
+  { to: "/time", label: "Tempo", icon: Timer, roles: ["leader","manager","collaborator"] },
+  // Comercial
+  { to: "/sales/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["commercial"] },
+  { to: "/sales", label: "Funil de Vendas", icon: Target, roles: ["commercial","leader","manager"] },
+  { to: "/sales/agenda", label: "Agenda", icon: CalendarDays, roles: ["commercial","leader","manager"] },
 ];
 
 export function AppLayout() {
@@ -54,11 +62,13 @@ export function AppLayout() {
 
         <nav className="space-y-1 flex-1">
           {nav.filter(n => {
-            const isLeader = currentUser.role === "leader";
-            const isManager = currentUser.is_manager;
-            if ((n as any).leaderOnly && !isLeader) return false;
-            if ((n as any).managerOrLeader && !isLeader && !isManager) return false;
-            return true;
+            const r = currentUser.role as any;
+            const role: "leader"|"manager"|"collaborator"|"commercial" =
+              r === "leader" ? "leader"
+              : r === "commercial" ? "commercial"
+              : currentUser.is_manager ? "manager"
+              : "collaborator";
+            return n.roles.includes(role);
           }).map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -121,7 +131,7 @@ export function AppLayout() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <Badge variant="outline" className="hidden md:inline-flex gap-1 border-accent/40 text-accent">
-              <Sparkles className="w-3 h-3" /> {currentUser.role === "leader" ? "Líder" : currentUser.is_manager ? "Gerente" : "Colaborador"}
+              <Sparkles className="w-3 h-3" /> {currentUser.role === "leader" ? "Líder" : (currentUser as any).role === "commercial" ? "Comercial" : currentUser.is_manager ? "Gerente" : "Colaborador"}
             </Badge>
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Alternar tema">
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

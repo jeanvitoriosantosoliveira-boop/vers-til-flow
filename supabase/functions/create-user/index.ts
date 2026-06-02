@@ -47,8 +47,8 @@ Deno.serve(async (req) => {
     if (!email || !password || !name) return json({ error: 'Campos obrigatórios faltando' }, 400);
     if (password.length < 6) return json({ error: 'Senha deve ter no mínimo 6 caracteres' }, 400);
     // Only leader may create leaders/managers
-    if ((role === 'leader' || role === 'manager') && !callerRoles.includes('leader')) {
-      return json({ error: 'Apenas líderes podem criar gerentes ou líderes' }, 403);
+    if ((role === 'leader' || role === 'manager' || role === 'commercial') && !callerRoles.includes('leader')) {
+      return json({ error: 'Apenas líderes podem criar gerentes, líderes ou comerciais' }, 403);
     }
 
     // Create auth user
