@@ -17,7 +17,7 @@ type Profile = {
   position: string | null; phone: string | null; is_active: boolean;
   contract_start: string | null; contract_end: string | null;
 };
-type RoleRow = { user_id: string; role: "leader" | "manager" | "collaborator" };
+type RoleRow = { user_id: string; role: "leader" | "manager" | "collaborator" | "commercial" };
 type Team = { id: string; name: string };
 
 export default function Collaborators() {
@@ -53,10 +53,11 @@ export default function Collaborators() {
     load();
   }
 
-  function roleOf(uid: string): "leader" | "manager" | "collaborator" {
+  function roleOf(uid: string): "leader" | "manager" | "collaborator" | "commercial" {
     const rs = roles.filter(x => x.user_id === uid).map(x => x.role);
     if (rs.includes("leader")) return "leader";
     if (rs.includes("manager")) return "manager";
+    if (rs.includes("commercial")) return "commercial";
     return "collaborator";
   }
 
