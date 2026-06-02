@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { mockClients, mockComments, mockTasks, mockTimeEntries, mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
 import type {
-  Client, Comment, Task, TaskStatus, TimeEntry, User,
+  Client, Comment, Task, TaskStatus, TimeEntry, User, Role,
   KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings, Team, CashAdjustment
 } from "@/types";
 import { useAuth } from "@/context/AuthContext";
@@ -59,7 +59,9 @@ interface AppState {
 
 const Ctx = createContext<AppState | null>(null);
 
-function uid() { return Math.random().toString(36).slice(2, 11); }
+function uid() {
+  return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 11);
+}
 
 const LS = {
   columns: "vd:columns",
@@ -87,6 +89,189 @@ function loadLS<T>(key: string, fallback: T): T {
 }
 function saveLS<T>(key: string, value: T) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
+}
+
+function mapRole(role?: string | null): Role {
+  return role === "leader" ? "leader" : "employee";
+}
+
+function mapUser(profile: any, roles: any[], members: any[]): User {
+  const role = roles.find((r) => r.user_id === profile.id)?.role ?? "collaborator";
+  const memberships = members.filter((m) => m.user_id === profile.id);
+  const teamIds = memberships.map((m) => m.team_id);
+
+  return {
+    id: profile.id,
+    name: profile.name,
+    email: profile.email,
+    role: mapRole(role),
+    avatar_url: profile.avatar_url ?? null,
+    position: profile.position ?? null,
+    salary: profile.salary ?? undefined,
+    tax_rate: profile.tax_rate ?? undefined,
+    hire_date: profile.hire_date ?? profile.contract_start ?? null,
+    team_id: teamIds[0] ?? null,
+    team_ids: teamIds,
+    is_manager: role === "leader" || role === "manager" || memberships.some((m) => m.role_in_team === "manager"),
+    phone: profile.phone ?? null,
+    birthdate: profile.birth_date ?? null,
+    bio: profile.bio ?? null,
+    city: profile.city ?? null,
+    skills: profile.skills ?? [],
+  };
+}
+
+function mapClient(row: any): Client {
+  return {
+    ...row,
+    monthly_fee: Number(row.monthly_value ?? row.monthly_fee ?? 0),
+    monthly_hours_target: row.monthly_hours_target ?? 40,
+    services: row.services ?? [],
+    health: row.health ?? "good",
+  };
+}
+
+function clientToDb(data: Partial<Client>) {
+  const { monthly_fee, satisfaction_history, ...rest } = data;
+  return {
+    ...rest,
+    monthly_value: monthly_fee,
+  } as any;
+}
+
+function mapTask(row: any): Task {
+  return {
+    ...row,
+    recurrence: row.recurrence ?? { mode: "none" },
+    column_id: row.column_id ?? null,
+    is_template: row.is_template ?? false,
+    template_id: row.template_id ?? null,
+    last_spawn: row.last_spawn ?? null,
+  };
+}
+
+function taskToDb(data: Partial<Task>) {
+  return data as any;
+}
+
+function mapTimeEntry(row: any): TimeEntry {
+  return {
+    ...row,
+    logged_at: row.started_at ?? row.logged_at ?? row.created_at,
+    description: row.description ?? null,
+    created_at: row.created_at ?? row.started_at,
+  };
+}
+
+function timeEntryToDb(entry: TimeEntry) {
+  return {
+    id: entry.id,
+    task_id: entry.task_id,
+    user_id: entry.user_id,
+    started_at: entry.logged_at,
+    ended_at: entry.logged_at,
+    seconds: entry.seconds,
+    description: entry.description ?? null,
+  } as any;
+}
+
+function mapTeam(row: any, members: any[]): Team {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? null,
+    color: row.color ?? "#6366f1",
+    manager_id: row.leader_id ?? null,
+    member_ids: members.filter((m) => m.team_id === row.id).map((m) => m.user_id),
+    created_at: row.created_at,
+  };
+}
+
+function teamToDb(team: Partial<Team>) {
+  return {
+    id: team.id,
+    name: team.name,
+    description: team.description ?? null,
+    color: team.color,
+    leader_id: team.manager_id ?? null,
+    created_at: team.created_at,
+  } as any;
+}
+
+function mapExpense(row: any): Expense {
+  return {
+    id: row.id,
+    title: row.title ?? row.category,
+    description: row.description ?? null,
+    amount: Number(row.amount ?? 0),
+    category: row.category,
+    date: row.occurred_on,
+    recurring: row.recurring ?? false,
+    created_at: row.created_at,
+  };
+}
+
+function expenseToDb(expense: Partial<Expense>, userId?: string) {
+  return {
+    id: expense.id,
+    title: expense.title,
+    description: expense.description ?? null,
+    amount: expense.amount ?? 0,
+    category: expense.category ?? "other",
+    occurred_on: expense.date,
+    recurring: expense.recurring ?? false,
+    created_by: userId,
+    created_at: expense.created_at,
+  } as any;
+}
+
+function mapExtraService(row: any): ExtraService {
+  return {
+    id: row.id,
+    client_id: row.client_id ?? null,
+    title: row.title,
+    description: row.description ?? null,
+    amount: Number(row.amount ?? 0),
+    date: row.occurred_on,
+    created_at: row.created_at,
+  };
+}
+
+function extraServiceToDb(service: Partial<ExtraService>, userId?: string) {
+  return {
+    id: service.id,
+    client_id: service.client_id ?? null,
+    title: service.title,
+    description: service.description ?? null,
+    amount: service.amount ?? 0,
+    occurred_on: service.date,
+    created_by: userId,
+    created_at: service.created_at,
+  } as any;
+}
+
+function mapCashAdjustment(row: any): CashAdjustment {
+  const amount = Number(row.amount ?? 0);
+  return {
+    id: row.id,
+    amount: row.kind === "out" ? -Math.abs(amount) : Math.abs(amount),
+    reason: row.description ?? "Ajuste de caixa",
+    date: row.occurred_on,
+    created_at: row.created_at,
+  };
+}
+
+function cashAdjustmentToDb(adjustment: Partial<CashAdjustment>, userId?: string) {
+  const amount = adjustment.amount ?? 0;
+  return {
+    id: adjustment.id,
+    amount: Math.abs(amount),
+    kind: amount < 0 ? "out" : "in",
+    occurred_on: adjustment.date,
+    description: adjustment.reason ?? null,
+    created_by: userId,
+    created_at: adjustment.created_at,
+  } as any;
 }
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
@@ -127,18 +312,68 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     (async () => {
       if (isSupabaseConfigured && supabase) {
         try {
-          const [u, c, t, cm] = await Promise.all([
-            supabase.from("users").select("*"),
-            supabase.from("clients").select("*"),
-            supabase.from("tasks").select("*"),
-            supabase.from("comments").select("*"),
+          const [
+            profilesRes,
+            rolesRes,
+            teamsRes,
+            membersRes,
+            clientsRes,
+            tasksRes,
+            commentsRes,
+            timeRes,
+            columnsRes,
+            expensesRes,
+            extraServicesRes,
+            teamNotesRes,
+            cashRes,
+            financeRes,
+          ] = await Promise.all([
+            supabase.from("profiles").select("*").order("name"),
+            supabase.from("user_roles").select("user_id,role"),
+            supabase.from("teams").select("*").order("name"),
+            supabase.from("team_members").select("*"),
+            supabase.from("clients").select("*").order("created_at", { ascending: false }),
+            supabase.from("tasks").select("*").order("created_at", { ascending: false }),
+            supabase.from("comments").select("*").order("created_at"),
+            supabase.from("time_entries").select("*").order("started_at", { ascending: false }),
+            supabase.from("kanban_columns").select("*").order("order"),
+            supabase.from("expenses").select("*").order("occurred_on", { ascending: false }),
+            supabase.from("extra_services").select("*").order("occurred_on", { ascending: false }),
+            supabase.from("team_notes").select("*").order("created_at", { ascending: false }),
+            supabase.from("cash_adjustments").select("*").order("occurred_on", { ascending: false }),
+            supabase.from("finance_settings").select("*"),
           ]);
           if (cancelled) return;
-          if (!u.error && u.data?.length) setUsers(u.data as User[]);
-          if (!c.error && c.data) setClients(c.data as Client[]);
-          if (!t.error && t.data) setTasks(t.data as Task[]);
-          if (!cm.error && cm.data) setComments(cm.data as Comment[]);
-          setUsingBackend(true);
+          const responses = [
+            profilesRes, rolesRes, teamsRes, membersRes, clientsRes, tasksRes, commentsRes,
+            timeRes, columnsRes, expensesRes, extraServicesRes, teamNotesRes, cashRes, financeRes,
+          ];
+          responses.forEach((res: any) => {
+            if (res.error) console.warn("Falha ao carregar dados do Supabase", res.error);
+          });
+
+          const roles = rolesRes.data ?? [];
+          const members = membersRes.data ?? [];
+          if (!profilesRes.error && profilesRes.data) setUsers(profilesRes.data.map((p) => mapUser(p, roles, members)));
+          if (!teamsRes.error && teamsRes.data) setTeams(teamsRes.data.map((tm) => mapTeam(tm, members)));
+          if (!clientsRes.error && clientsRes.data) setClients(clientsRes.data.map(mapClient));
+          if (!tasksRes.error && tasksRes.data) setTasks(tasksRes.data.map(mapTask));
+          if (!commentsRes.error && commentsRes.data) setComments(commentsRes.data as Comment[]);
+          if (!timeRes.error && timeRes.data) setTimeEntries(timeRes.data.map(mapTimeEntry));
+          if (!columnsRes.error && columnsRes.data) setColumns(columnsRes.data.length ? columnsRes.data as KanbanColumn[] : DEFAULT_COLUMNS);
+          if (!expensesRes.error && expensesRes.data) setExpenses(expensesRes.data.map(mapExpense));
+          if (!extraServicesRes.error && extraServicesRes.data) setExtraServices(extraServicesRes.data.map(mapExtraService));
+          if (!teamNotesRes.error && teamNotesRes.data) setTeamNotes(teamNotesRes.data as TeamNote[]);
+          if (!cashRes.error && cashRes.data) setCashAdjustments(cashRes.data.map(mapCashAdjustment));
+          if (!financeRes.error && financeRes.data) {
+            const settings = financeRes.data.reduce((acc: FinanceSettings, row: any) => ({ ...acc, [row.key]: row.value }), {
+              opening_balance: 25000,
+              default_tax_rate: 32,
+              custom_categories: [],
+            });
+            setFinanceSettings(settings);
+          }
+          setUsingBackend(responses.some((res: any) => !res.error));
         } catch (e) {
           console.warn("Supabase falhou, usando mocks", e);
         }
@@ -181,7 +416,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       recurrence: data.recurrence ?? { mode: "none" },
     };
     setTasks((prev) => [newTask, ...prev]);
-    if (usingBackend && supabase) await supabase.from("tasks").insert(newTask);
+    if (usingBackend && supabase) await supabase.from("tasks").insert(taskToDb(newTask));
     const assignee = users.find(u => u.id === newTask.assignee_id);
     pushNotif({
       type: "task_created",
@@ -199,7 +434,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       return t;
     }));
     if (usingBackend && supabase) {
-      await supabase.from("tasks").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("tasks").update(taskToDb({ ...patch, updated_at: new Date().toISOString() })).eq("id", id);
     }
     if (prevTask) {
       const isStatus = patch.status && patch.status !== prevTask.status;
@@ -271,24 +506,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setClients((prev) => [c, ...prev]);
-    if (usingBackend && supabase) await supabase.from("clients").insert(c);
+    if (usingBackend && supabase) await supabase.from("clients").insert(clientToDb(c));
     pushNotif({ type: "info", title: "Novo cliente", body: c.name });
     toast.success("Cliente criado", { description: c.name });
   }, [usingBackend, pushNotif]);
 
   const updateClient = useCallback(async (id: string, patch: Partial<Client>) => {
     setClients((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
-    if (usingBackend && supabase) await supabase.from("clients").update(patch).eq("id", id);
+    if (usingBackend && supabase) await supabase.from("clients").update(clientToDb(patch)).eq("id", id);
   }, [usingBackend]);
 
   const addComment = useCallback(async (taskId: string, body: string) => {
     const c: Comment = { id: uid(), task_id: taskId, user_id: currentUser.id, body, created_at: new Date().toISOString() };
     setComments((prev) => [...prev, c]);
-    if (usingBackend && supabase) await supabase.from("comments").insert(c);
+    if (usingBackend && supabase) await supabase.from("comments").insert(c as any);
   }, [currentUser, usingBackend]);
 
   const logTime = useCallback(async ({ task_id, seconds, description, logged_at }: { task_id: string; seconds: number; description?: string; logged_at?: string }) => {
     if (seconds <= 0) return;
+    const task = tasks.find((t) => t.id === task_id);
     const entry: TimeEntry = {
       id: uid(), task_id, user_id: currentUser.id, seconds,
       description: description ?? null,
@@ -297,39 +533,54 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     setTimeEntries((prev) => [entry, ...prev]);
     setTasks((prev) => prev.map((t) => t.id === task_id ? { ...t, total_seconds: t.total_seconds + seconds } : t));
-    if (usingBackend && supabase) await supabase.from("time_entries").insert(entry);
+    if (usingBackend && supabase) {
+      await supabase.from("time_entries").insert(timeEntryToDb(entry));
+      if (task) await supabase.from("tasks").update({ total_seconds: task.total_seconds + seconds } as any).eq("id", task_id);
+    }
     toast.success("Horas lançadas", { description: `${(seconds/3600).toFixed(2)}h registradas` });
-  }, [currentUser, usingBackend]);
+  }, [currentUser, tasks, usingBackend]);
 
   const deleteTimeEntry = useCallback(async (id: string) => {
     const entry = timeEntries.find(t => t.id === id);
     if (!entry) return;
     setTimeEntries((prev) => prev.filter(t => t.id !== id));
     setTasks((prev) => prev.map((t) => t.id === entry.task_id ? { ...t, total_seconds: Math.max(0, t.total_seconds - entry.seconds) } : t));
-    if (usingBackend && supabase) await supabase.from("time_entries").delete().eq("id", id);
-  }, [timeEntries, usingBackend]);
+    if (usingBackend && supabase) {
+      await supabase.from("time_entries").delete().eq("id", id);
+      const task = tasks.find((t) => t.id === entry.task_id);
+      if (task) await supabase.from("tasks").update({ total_seconds: Math.max(0, task.total_seconds - entry.seconds) } as any).eq("id", entry.task_id);
+    }
+  }, [tasks, timeEntries, usingBackend]);
 
   // ---------- Colunas dinâmicas (líder) ----------
   const createColumn = useCallback((title: string) => {
+    const id = uid();
     setColumns(prev => {
       const order = (prev[prev.length - 1]?.order ?? 0) + 1;
       const accents = ["bg-accent","bg-primary","bg-warning","bg-success","bg-destructive"];
       const accent = accents[prev.length % accents.length];
-      return [...prev, { id: uid(), title, accent, order }];
+      const column = { id, title, accent, order };
+      if (usingBackend && supabase) void supabase.from("kanban_columns").insert(column as any);
+      return [...prev, column];
     });
     toast.success("Coluna criada", { description: title });
-  }, []);
+  }, [usingBackend]);
   const renameColumn = useCallback((id: string, title: string) => {
     setColumns(prev => prev.map(c => c.id === id ? { ...c, title } : c));
-  }, []);
+    if (usingBackend && supabase) void supabase.from("kanban_columns").update({ title }).eq("id", id);
+  }, [usingBackend]);
   const deleteColumn = useCallback((id: string) => {
     const col = columns.find(c => c.id === id);
     if (!col || col.base) return;
     setColumns(prev => prev.filter(c => c.id !== id));
     // Tarefas que pertenciam a essa coluna voltam para "todo"
     setTasks(prev => prev.map(t => t.column_id === id ? { ...t, column_id: null, status: "todo" } : t));
+    if (usingBackend && supabase) {
+      void supabase.from("tasks").update({ column_id: null, status: "todo" } as any).eq("column_id", id);
+      void supabase.from("kanban_columns").delete().eq("id", id);
+    }
     toast.success("Coluna removida");
-  }, [columns]);
+  }, [columns, usingBackend]);
 
   // ---------- Finanças ----------
   const createExpense = useCallback((e: Partial<Expense>) => {
@@ -344,9 +595,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setExpenses(prev => [item, ...prev]);
+    if (usingBackend && supabase) void supabase.from("expenses").insert(expenseToDb(item, currentUser.id));
     toast.success("Despesa lançada", { description: item.title });
-  }, []);
-  const deleteExpense = useCallback((id: string) => setExpenses(prev => prev.filter(e => e.id !== id)), []);
+  }, [currentUser, usingBackend]);
+  const deleteExpense = useCallback((id: string) => {
+    setExpenses(prev => prev.filter(e => e.id !== id));
+    if (usingBackend && supabase) void supabase.from("expenses").delete().eq("id", id);
+  }, [usingBackend]);
 
   const createExtraService = useCallback((s: Partial<ExtraService>) => {
     const item: ExtraService = {
@@ -359,24 +614,55 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setExtraServices(prev => [item, ...prev]);
+    if (usingBackend && supabase) void supabase.from("extra_services").insert(extraServiceToDb(item, currentUser.id));
     toast.success("Serviço avulso lançado", { description: item.title });
-  }, []);
-  const deleteExtraService = useCallback((id: string) => setExtraServices(prev => prev.filter(s => s.id !== id)), []);
+  }, [currentUser, usingBackend]);
+  const deleteExtraService = useCallback((id: string) => {
+    setExtraServices(prev => prev.filter(s => s.id !== id));
+    if (usingBackend && supabase) void supabase.from("extra_services").delete().eq("id", id);
+  }, [usingBackend]);
 
   // ---------- Notas da equipe ----------
   const addTeamNote = useCallback((user_id: string, body: string) => {
     const n: TeamNote = { id: uid(), user_id, body, created_at: new Date().toISOString(), author_id: currentUser.id };
     setTeamNotes(prev => [n, ...prev]);
-  }, [currentUser]);
-  const deleteTeamNote = useCallback((id: string) => setTeamNotes(prev => prev.filter(n => n.id !== id)), []);
+    if (usingBackend && supabase) void supabase.from("team_notes").insert(n as any);
+  }, [currentUser, usingBackend]);
+  const deleteTeamNote = useCallback((id: string) => {
+    setTeamNotes(prev => prev.filter(n => n.id !== id));
+    if (usingBackend && supabase) void supabase.from("team_notes").delete().eq("id", id);
+  }, [usingBackend]);
 
   const updateUser = useCallback((id: string, patch: Partial<User>) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u));
-  }, []);
+    if (usingBackend && supabase) {
+      const profilePatch = {
+        name: patch.name,
+        email: patch.email,
+        avatar_url: patch.avatar_url,
+        phone: patch.phone,
+        bio: patch.bio,
+        position: patch.position,
+        birth_date: patch.birthdate,
+        skills: patch.skills,
+        salary: patch.salary,
+        tax_rate: patch.tax_rate,
+        hire_date: patch.hire_date,
+        city: patch.city,
+        updated_at: new Date().toISOString(),
+      };
+      void supabase.from("profiles").update(profilePatch as any).eq("id", id);
+    }
+  }, [usingBackend]);
 
   const updateFinanceSettings = useCallback((patch: Partial<FinanceSettings>) => {
     setFinanceSettings(prev => ({ ...prev, ...patch }));
-  }, []);
+    if (usingBackend && supabase) {
+      Object.entries(patch).forEach(([key, value]) => {
+        void supabase.from("finance_settings").upsert({ key, value, updated_at: new Date().toISOString() } as any);
+      });
+    }
+  }, [usingBackend]);
 
   // ---------- Teams ----------
   const createTeam = useCallback((t: Partial<Team>) => {
@@ -389,20 +675,26 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setTeams(prev => [item, ...prev]);
+    if (usingBackend && supabase) void supabase.from("teams").insert(teamToDb(item));
     toast.success("Time criado", { description: item.name });
-  }, []);
+  }, [usingBackend]);
   const updateTeam = useCallback((id: string, patch: Partial<Team>) => {
     setTeams(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
-  }, []);
+    if (usingBackend && supabase) void supabase.from("teams").update(teamToDb(patch)).eq("id", id);
+  }, [usingBackend]);
   const deleteTeam = useCallback((id: string) => {
     setTeams(prev => prev.filter(t => t.id !== id));
     setUsers(prev => prev.map(u => u.team_id === id ? { ...u, team_id: null, is_manager: false } : u));
-  }, []);
+    if (usingBackend && supabase) void supabase.from("teams").delete().eq("id", id);
+  }, [usingBackend]);
 
   const addUserToTeam = useCallback((userId: string, teamId: string) => {
     setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_ids: Array.from(new Set([...(t.member_ids ?? []), userId])) } : t));
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, team_ids: Array.from(new Set([...(u.team_ids ?? (u.team_id ? [u.team_id] : [])), teamId])), team_id: u.team_id ?? teamId } : u));
-  }, []);
+    if (usingBackend && supabase) {
+      void supabase.from("team_members").insert({ team_id: teamId, user_id: userId, role_in_team: "member" } as any);
+    }
+  }, [usingBackend]);
   const removeUserFromTeam = useCallback((userId: string, teamId: string) => {
     setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_ids: (t.member_ids ?? []).filter(x => x !== userId) } : t));
     setUsers(prev => prev.map(u => {
@@ -410,7 +702,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const next = (u.team_ids ?? (u.team_id ? [u.team_id] : [])).filter(x => x !== teamId);
       return { ...u, team_ids: next, team_id: u.team_id === teamId ? (next[0] ?? null) : u.team_id, is_manager: u.team_id === teamId ? false : u.is_manager };
     }));
-  }, []);
+    if (usingBackend && supabase) void supabase.from("team_members").delete().eq("team_id", teamId).eq("user_id", userId);
+  }, [usingBackend]);
 
   const setClientSatisfaction = useCallback((id: string, value: number, note?: string) => {
     const monthKey = new Date().toISOString().slice(0,7);
@@ -419,8 +712,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const hist = (c.satisfaction_history ?? []).filter(h => h.month !== monthKey);
       return { ...c, satisfaction: value, satisfaction_history: [...hist, { month: monthKey, value, note }].sort((a,b) => a.month.localeCompare(b.month)) };
     }));
+    if (usingBackend && supabase) {
+      void supabase.from("clients").update({ satisfaction: value } as any).eq("id", id);
+      void supabase.from("client_satisfaction_history").insert({ client_id: id, rating: value, recorded_by: currentUser.id } as any);
+    }
     toast.success("Satisfação atualizada", { description: `${value.toFixed(1)} / 5` });
-  }, []);
+  }, [currentUser, usingBackend]);
 
   const addCustomCategory = useCallback((label: string) => {
     const key = "cat_" + label.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 20) + "_" + uid().slice(0, 4);
@@ -437,9 +734,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setCashAdjustments(prev => [item, ...prev]);
+    if (usingBackend && supabase) void supabase.from("cash_adjustments").insert(cashAdjustmentToDb(item, currentUser.id));
     toast.success("Ajuste de caixa lançado");
-  }, []);
-  const deleteCashAdjustment = useCallback((id: string) => setCashAdjustments(prev => prev.filter(c => c.id !== id)), []);
+  }, [currentUser, usingBackend]);
+  const deleteCashAdjustment = useCallback((id: string) => {
+    setCashAdjustments(prev => prev.filter(c => c.id !== id));
+    if (usingBackend && supabase) void supabase.from("cash_adjustments").delete().eq("id", id);
+  }, [usingBackend]);
 
   // ---------- Visibilidade hierárquica ----------
   const visibleTaskIds = useCallback(() => {
