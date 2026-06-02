@@ -25,7 +25,7 @@ export function exportReportPdf(opts: {
   doc.setFont("helvetica", "normal"); doc.setFontSize(10);
   if (opts.subtitle) doc.text(opts.subtitle, 40, 56);
   doc.setFontSize(9); doc.setTextColor(180, 200, 230);
-  doc.text("Versátil Digital · ZailonSoft", pageW - 40, 38, { align: "right" });
+  doc.text("Versátil Digital", pageW - 40, 38, { align: "right" });
   doc.text(new Date().toLocaleString("pt-BR"), pageW - 40, 56, { align: "right" });
 
   let cursorY = 100;
