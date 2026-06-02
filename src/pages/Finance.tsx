@@ -149,6 +149,8 @@ export default function Finance() {
   const [adjForm, setAdjForm] = useState<{ amount: number; reason: string; date: string; type: "in" | "out" }>({
     amount: 0, reason: "", date: new Date().toISOString().slice(0,10), type: "in"
   });
+  const [cashEditOpen, setCashEditOpen] = useState(false);
+  const [cashEditValue, setCashEditValue] = useState(0);
 
   function submitExpense() {
     if (!expForm.title?.trim() || !expForm.amount) return;
@@ -208,7 +210,10 @@ export default function Finance() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <Card className="p-5 relative overflow-hidden">
           <div className="absolute inset-0 gradient-glow opacity-50 pointer-events-none" />
-          <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2"><Wallet className="w-3.5 h-3.5" /> Caixa atual</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase tracking-wider"><Wallet className="w-3.5 h-3.5" /> Caixa atual</div>
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => { setCashEditValue(cashCurrent); setCashEditOpen(true); }}>Editar</Button>
+          </div>
           <p className={`font-display text-2xl font-bold tabular-nums ${cashCurrent < 0 ? "text-destructive" : ""}`}>{BRL(cashCurrent)}</p>
           <p className="text-[10px] text-muted-foreground mt-1">Inicial: {BRL(financeSettings.opening_balance)}</p>
         </Card>
