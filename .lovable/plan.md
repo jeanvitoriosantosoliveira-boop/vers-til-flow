@@ -1,108 +1,63 @@
-## Objetivo
-Aplicar uma rodada grande de melhorias: corrigir bug de role, esconder dados financeiros de gerente/colaborador, paginação em relatórios, notificações individuais, gestão completa de colaboradores/clientes/times, cadastro de serviços, upload de avatar e troca de senha.
+## Escopo
 
----
+Três blocos grandes:
 
-## 1. Banco de dados (migration)
+### 1. Aba "Studio" (apenas líder)
+- Nova rota `/studio` visível só para `is_leader`.
+- Controle de ensaios: tabela `studio_sessions` (data, cliente/artista, horas, valor, status pago/pendente, observações).
+- Financeiro próprio do Studio: `studio_expenses` + cards de receita/despesa/lucro do studio (separado do Financeiro principal).
+- CRUD completo, gráficos simples (mensal).
 
-**Novas tabelas / colunas**
-- `services` — catálogo de serviços da agência (`name`, `description`, `default_price`, `is_active`).
-- `client_services` — N:N entre `clients` e `services` (com `monthly_price` opcional, `started_at`).
-- `client_status` enum: garantir valores PT-BR + `paused` (`active`, `paused`, `inactive`, `prospect`).
-- `client_collaborators` — N:N direto cliente↔colaborador (gerada via time, mas também manual).
+### 2. Financeiro: editar Caixa atual manualmente
+- No card "Caixa atual" da tela `/finance`, botão "Editar" abre dialog para setar valor exato.
+- Implementado gravando em `finance_settings` chave `cash_override` (valor + data) — o cálculo de caixa passa a usar override se existir, senão segue regra atual.
 
-**Funções / triggers**
-- `sync_client_collaborators_from_team()` — quando `client_teams` muda, recalcula `client_collaborators` para membros `manager`/`leader` daquele time.
-- Trigger em `clients` que, se `status` virar `paused`/`inactive`, remove vínculos em `client_collaborators`.
-- Trigger em `tasks` (`assignee_id`) → cria `notifications` para o responsável (criada/atualizada/concluída).
-- RLS de `notifications`: apenas o dono lê (já está); garantir inserts via trigger SECURITY DEFINER.
+### 3. Novo perfil "Comercial" (vendedor)
+- Adicionar `'commercial'` ao enum `app_role`.
+- Helper SQL `is_commercial(uid)`; navegação por role:
+  - Comercial vê: Dashboard (CRM), Funil de Vendas (kanban próprio), Leads/Clientes-CRM, Agenda, Perfil.
+  - Não vê: Kanban de tarefas operacionais, Times, Colaboradores, Finance, Studio, Reports operacionais.
+- Tabelas novas para CRM de vendas:
+  - `leads` (nome, empresa, email, phone, whatsapp, origem, valor estimado, status, owner_id, notes).
+  - `lead_stages` (colunas configuráveis do funil: Novo, Abordagem, Follow-up, Proposta, Negociação, Ganho, Perdido) + `stage_id` em `leads`.
+  - `lead_activities` (tipo: call/email/whatsapp/note/meeting, descrição, data).
+  - `sales_events` (agenda: título, lead_id, start, end, tipo: call/meeting/reuniao, location/link).
+- Telas:
+  - `/sales` — Kanban funil drag-and-drop (mesma lógica do Kanban atual).
+  - Card do lead exibe nome, valor, próximo follow-up; botões: WhatsApp (abre `https://wa.me/<num>`), email (`mailto:`), telefone (`tel:`).
+  - Dialog do lead: dados + timeline de atividades + agendar evento.
+  - `/sales/agenda` — calendário com eventos próximos, criar/editar evento.
+  - `/sales/dashboard` (sobrescreve `/` quando role=commercial): KPIs de vendas (leads no funil, valor previsto, ganhos do mês, conversão).
+- Edge function `create-user` aceita role `commercial`.
 
-**RLS**
-- `services`: SELECT autenticado; INSERT/UPDATE/DELETE só `leader`.
-- `client_services`: SELECT autenticado; INSERT/UPDATE/DELETE só `leader`.
-- `client_collaborators`: SELECT autenticado; modificação `leader`/`manager`.
-- `client_satisfaction_history`: liberar INSERT para qualquer autenticado (não só admin).
-
-**Storage**
-- Bucket público `avatars` + policies (upload na própria pasta `auth.uid()/...`).
-
----
-
-## 2. Bug de role no edge function `create-user`
-Atualmente: provavelmente o `handle_new_user` insere `collaborator` por padrão e o edge function não substitui corretamente. Corrigir: depois de criar o auth user, **deletar** `user_roles` default e inserir o role escolhido (`leader`/`manager`/`collaborator`). Garantir que body é parseado certo.
-
----
-
-## 3. Frontend
-
-### 3.1 Permissões (esconder financeiro de manager/collaborator)
-- Sidebar: `Finance`, `Reports > Financeiro` só para `leader`.
-- `ClientDetail`: campos `monthly_value`, "Receita/mês" e mensalidade só visíveis para `leader`.
-- `TeamMemberDetail`/perfil de colaborador: esconder `salary`, `hourly_rate`, `tax_rate` para não-líder.
-- Manager ganha acesso a: Times, Colaboradores, Clientes, Kanban (sem financeiro).
-
-### 3.2 `/reports/tasks` paginação
-- Paginação client-side de 20 em 20, usando `<Pagination>` do shadcn (Prev/Next + números).
-
-### 3.3 Notificações individuais
-- `NotificationsBell` lê de `notifications` via Supabase filtrando `user_id = auth.uid()`, com realtime subscription.
-- Marcar como lida → `UPDATE notifications SET read = true`.
-
-### 3.4 Tela de Equipe / detalhe do colaborador
-- Botão "Remover colaborador" (líder): chama edge function `delete-user` (a criar) que apaga do auth + profiles + user_roles.
-- Seção "Clientes vinculados": multi-select de clientes → grava em `client_collaborators`.
-
-### 3.5 Times (`/teams` ou `TeamsDB`)
-- Adicionar seção "Clientes do time" com multi-select → `client_teams`.
-- Trigger no DB cuida de sincronizar `client_collaborators`.
-
-### 3.6 Clientes
-- Status em PT-BR: Ativo, Pausado, Inativo, Prospect.
-- Quando muda para Pausado/Inativo: trigger remove vínculos.
-- "Equipe envolvida" agora vem de `client_collaborators` (join com profiles).
-- Satisfação editável por **todos** (colaborador/gerente/líder) → grava em `client_satisfaction_history` e atualiza `clients.satisfaction`.
-- Seção "Serviços contratados": multi-select de `services`. Editável só por líder; visível a todos.
-
-### 3.7 Serviços
-- Nova página `/services` (só líder pode acessar editar; manager/collaborator veem read-only).
-- CRUD com nome, descrição, preço.
-
-### 3.8 Perfil (`/profile`)
-- Upload de avatar → bucket `avatars`. Substituir input de URL por `<input type="file">`.
-- Seção "Senha": mostrar email + 2 campos (nova senha + confirmação) usando `supabase.auth.updateUser({ password })`. Não dá para "ver senha atual" (auth não expõe hash) — vou explicar isso e oferecer apenas "alterar senha".
-- Salvar dados em `profiles` (não no mock store).
-
-### 3.9 Colaboradores (`/collaborators`)
-- Botão remover (líder).
-- Editar role inline.
-
----
-
-## 4. SQL final
-No fim, entrego um script SQL único que o usuário pode rodar manualmente no Supabase para sincronizar (caso a migration automática falhe), + comando para promover líder.
+### 4. SQL consolidado
+Ao final, entrego script único: enum `commercial`, novas tabelas (`studio_sessions`, `studio_expenses`, `leads`, `lead_stages`, `lead_activities`, `sales_events`), GRANTs + RLS, seed de stages padrão e colunas Kanban do funil.
 
 ---
 
 ## Detalhes técnicos
-- Migration única com tudo (tabelas, triggers, RLS, bucket).
-- Edge function `delete-user` usando service role.
-- Hook `useCurrentRole()` em `AuthContext` já existe (`is_leader`, `is_manager`).
-- Realtime: `supabase.channel('notif').on('postgres_changes', { table: 'notifications', filter: 'user_id=eq.<uid>' })`.
+- Migration única com tudo.
+- RLS:
+  - `studio_*`: SELECT/INSERT/UPDATE/DELETE apenas `leader`.
+  - `leads`/`lead_activities`/`sales_events`: SELECT auth (leader/manager veem tudo); commercial vê só `owner_id = auth.uid()`; INSERT/UPDATE pelo dono ou leader/manager.
+  - `lead_stages`: SELECT auth; modify leader/manager.
+- AppLayout: navegação varia por role (`leader|manager|collaborator|commercial`).
+- Rotas guard: helper `<RoleGuard allow={['leader']}>`.
+- Reaproveitar `@dnd-kit` do Kanban atual para o funil.
+- Card lead com ícones lucide `MessageCircle` (whats), `Mail`, `Phone`.
+- Agenda: lista por dia (sem lib de calendário pesada) + filtro semana/mês.
+- Override de caixa: ao salvar, grava `finance_settings.cash_override = { value, set_at }`. `Finance.tsx` usa esse valor como base, somando ajustes posteriores a `set_at`.
+
+## Ordem
+1. Migration (enum + tabelas + RLS + seed stages).
+2. Edge function `create-user`: aceitar `commercial`.
+3. AuthContext: tipo `AppRole` inclui `commercial`; `is_commercial`.
+4. AppLayout: nav por role + guard de rotas.
+5. Páginas Studio (lista ensaios + financeiro studio).
+6. Edit caixa atual em Finance.
+7. Páginas Sales (Funil, Lead detail, Agenda, Dashboard comercial).
+8. SQL final consolidado para o usuário.
 
 ---
 
-## Sobre "ver senha atual"
-O Supabase **não permite** ver a senha atual do usuário (ela é hash bcrypt). Vou implementar apenas "alterar senha" (com confirmação da nova). Se quiser segurança extra, pedimos a senha atual e fazemos um `signInWithPassword` silencioso para validar antes de trocar — confirma se prefere assim?
-
----
-
-## Ordem de execução
-1. Migration SQL (tabelas, triggers, bucket, RLS).
-2. Edge functions (`create-user` fix, `delete-user` novo).
-3. Frontend: AuthContext/permissões → Sidebar → páginas (Profile, Collaborators, Clients, ClientDetail, Teams, Services nova, Reports).
-4. Notificações realtime.
-5. SQL final consolidado para o usuário.
-
-Pode confirmar 2 pontos antes de começar?
-- (a) "Ver senha atual" — confirmo que não é possível, vou implementar **alterar senha com confirmação da senha atual** (mais seguro). OK?
-- (b) Manager pode **criar/remover colaboradores** (sem mexer em líder) ou só líder?
+Posso seguir?
