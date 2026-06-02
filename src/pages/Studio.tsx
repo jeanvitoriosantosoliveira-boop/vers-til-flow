@@ -102,7 +102,7 @@ export default function Studio() {
                 <DialogHeader><DialogTitle>Novo ensaio</DialogTitle></DialogHeader>
                 <div className="grid gap-3">
                   <div><Label>Título</Label><Input value={sessionForm.title ?? ""} onChange={e => setSessionForm(f => ({ ...f, title: e.target.value }))} /></div>
-                  <div><Label>Artista / Banda</Label><Input value={sessionForm.artist_name ?? ""} onChange={e => setSessionForm(f => ({ ...f, artist_name: e.target.value }))} /></div>
+                  <div><Label>Empresa</Label><Input value={sessionForm.artist_name ?? ""} onChange={e => setSessionForm(f => ({ ...f, artist_name: e.target.value }))} /></div>
                   <div className="grid grid-cols-3 gap-2">
                     <div><Label>Data</Label><Input type="date" value={sessionForm.session_date} onChange={e => setSessionForm(f => ({ ...f, session_date: e.target.value }))} /></div>
                     <div><Label>Horas</Label><Input type="number" step="0.5" value={sessionForm.hours} onChange={e => setSessionForm(f => ({ ...f, hours: Number(e.target.value) }))} /></div>
