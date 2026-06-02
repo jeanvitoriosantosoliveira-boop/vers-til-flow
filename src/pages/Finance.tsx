@@ -612,6 +612,26 @@ export default function Finance() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog editar caixa atual */}
+      <Dialog open={cashEditOpen} onOpenChange={setCashEditOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Definir caixa atual</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Valor exato (R$)</Label>
+            <Input type="number" step="0.01" value={cashEditValue} onChange={(e) => setCashEditValue(+e.target.value)} />
+            <p className="text-xs text-muted-foreground">Um ajuste manual será criado para igualar o caixa ao valor informado.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCashEditOpen(false)}>Cancelar</Button>
+            <Button onClick={() => {
+              const delta = cashEditValue - cashCurrent;
+              if (delta !== 0) addCashAdjustment({ amount: delta, reason: "Ajuste manual de caixa", date: new Date().toISOString().slice(0,10) });
+              setCashEditOpen(false);
+            }}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
