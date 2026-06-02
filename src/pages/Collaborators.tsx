@@ -104,6 +104,7 @@ export default function Collaborators() {
                     {r === "leader" && <Badge variant="default" className="gap-1"><Crown className="w-3 h-3" />Líder</Badge>}
                     {r === "manager" && <Badge variant="secondary" className="gap-1"><Shield className="w-3 h-3" />Gerente</Badge>}
                     {r === "collaborator" && <Badge variant="outline">Colaborador</Badge>}
+                    {r === "commercial" && <Badge variant="outline" className="border-accent/40 text-accent">Comercial</Badge>}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{p.position ?? "—"}</p>
                   <p className="text-xs text-muted-foreground truncate">{p.email}</p>
@@ -130,7 +131,7 @@ function NewCollaboratorDialog({
   const [password, setPassword] = useState("");
   const [position, setPosition] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"collaborator" | "manager" | "leader">("collaborator");
+  const [role, setRole] = useState<"collaborator" | "manager" | "leader" | "commercial">("collaborator");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -169,6 +170,7 @@ function NewCollaboratorDialog({
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="collaborator">Colaborador</SelectItem>
+                {canCreateManagers && <SelectItem value="commercial">Comercial</SelectItem>}
                 {canCreateManagers && <SelectItem value="manager">Gerente</SelectItem>}
                 {canCreateManagers && <SelectItem value="leader">Líder</SelectItem>}
               </SelectContent>
