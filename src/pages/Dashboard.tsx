@@ -6,11 +6,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2, Clock, AlertTriangle, ListTodo, TrendingUp, Users as UsersIcon,
-  Sparkles, Flame, Target, ArrowUpRight, Zap, Crown, Activity
+  Sparkles, Flame, Target, ArrowUpRight, Zap, Crown, Activity, Lock
 } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
 import { relativeDue, formatSeconds } from "@/lib/format";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
+import { canViewFinancial } from "@/lib/roleVisibility";
 
 export default function Dashboard() {
   const { tasks, clients, users, timeEntries, currentUser } = useApp();
@@ -147,7 +148,7 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-          {isLeader && (
+          {canViewFinancial(currentUser) && (
             <div className="flex flex-col items-end">
               <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Receita recorrente</p>
               <p className="font-display text-4xl font-bold text-gradient tabular-nums">R$ {monthlyRevenue.toLocaleString("pt-BR")}</p>

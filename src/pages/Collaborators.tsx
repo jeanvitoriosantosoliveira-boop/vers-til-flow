@@ -126,6 +126,7 @@ export default function Collaborators() {
 function NewCollaboratorDialog({
   teams, canCreateManagers, onCreated,
 }: { teams: Team[]; canCreateManagers: boolean; onCreated: () => void }) {
+  const { session } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -137,17 +138,66 @@ function NewCollaboratorDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    const { data, error } = await supabase.functions.invoke("create-user", {
-      body: { name, email, password, position, phone, role, team_ids: teamIds },
-    });
-    setBusy(false);
-    if (error || (data as any)?.error) {
-      toast.error((data as any)?.error ?? error?.message ?? "Erro ao criar");
+
+    // Validate session exists
+    if (!session?.access_token) {
+      toast.error("Sua sessão expirou. Por favor, faça login novamente.");
       return;
     }
-    toast.success("Colaborador criado!");
-    onCreated();
+
+    // Validate inputs
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+
+    if (password.length < 6) {
+      toast.error("Senha deve ter no mínimo 6 caracteres");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-user", {
+        body: { 
+          name: name.trim(), 
+          email: email.trim(), 
+          password, 
+          position: position.trim(), 
+          phone: phone.trim(), 
+          role, 
+          team_ids: teamIds 
+        },
+      });
+
+      if (error) {
+        console.error("Function invocation error:", error);
+        toast.error(error.message || "Erro ao criar colaborador");
+        return;
+      }
+
+      if ((data as any)?.error) {
+        console.error("Function returned error:", (data as any).error);
+        toast.error((data as any).error);
+        return;
+      }
+
+      toast.success("Colaborador criado com sucesso!");
+      // Reset form
+      setName("");
+      setEmail("");
+      setPassword("");
+      setPosition("");
+      setPhone("");
+      setRole("collaborator");
+      setTeamIds([]);
+      onCreated();
+    } catch (err: any) {
+      console.error("Unexpected error:", err);
+      toast.error(err?.message || "Erro inesperado ao criar colaborador");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function toggleTeam(id: string) {
@@ -159,14 +209,14 @@ function NewCollaboratorDialog({
       <DialogHeader><DialogTitle>Novo colaborador</DialogTitle></DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><Label>Nome*</Label><Input value={name} onChange={e => setName(e.target.value)} required /></div>
-          <div><Label>E-mail*</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
-          <div><Label>Senha* (mín 6)</Label><Input type="text" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} /></div>
-          <div><Label>Cargo</Label><Input value={position} onChange={e => setPosition(e.target.value)} placeholder="Ex: Designer" /></div>
-          <div><Label>Telefone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
+          <div><Label>Nome*</Label><Input value={name} onChange={e => setName(e.target.value)} required disabled={busy} /></div>
+          <div><Label>E-mail*</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} required disabled={busy} /></div>
+          <div><Label>Senha* (mín 6)</Label><Input type="text" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} disabled={busy} /></div>
+          <div><Label>Cargo</Label><Input value={position} onChange={e => setPosition(e.target.value)} placeholder="Ex: Designer" disabled={busy} /></div>
+          <div><Label>Telefone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} disabled={busy} /></div>
           <div>
-            <Label>Nível</Label>
-            <Select value={role} onValueChange={v => setRole(v as any)}>
+            <Label>Nível*</Label>
+            <Select value={role} onValueChange={v => setRole(v as any)} disabled={busy}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="collaborator">Colaborador</SelectItem>
@@ -186,7 +236,8 @@ function NewCollaboratorDialog({
                 type="button"
                 key={t.id}
                 onClick={() => toggleTeam(t.id)}
-                className={`px-3 py-1.5 rounded-full text-xs border ${teamIds.includes(t.id) ? "bg-primary text-primary-foreground border-primary" : "border-border"}`}
+                disabled={busy}
+                className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${teamIds.includes(t.id) ? "bg-primary text-primary-foreground border-primary" : "border-border"} ${busy ? "opacity-50 cursor-not-allowed" : ""}`}
               >{t.name}</button>
             ))}
           </div>

@@ -24,6 +24,7 @@ import TimeTracking from "./pages/TimeTracking";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import Studio from "./pages/Studio";
+import Services from "./pages/Services";
 import SalesFunnel from "./pages/SalesFunnel";
 import SalesAgenda from "./pages/SalesAgenda";
 import SalesDashboard from "./pages/SalesDashboard";
@@ -65,6 +66,7 @@ const App = () => (
                       <Route path="/reports/:type" element={<ReportDetail />} />
                       <Route path="/clients" element={<Clients />} />
                       <Route path="/clients/:id" element={<ClientDetail />} />
+                      <Route path="/services" element={<Services />} />
                       <Route path="/team" element={<Team />} />
                       <Route path="/team/:id" element={<TeamMemberDetail />} />
                       <Route path="/teams" element={<TeamsDB />} />
