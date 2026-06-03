@@ -111,7 +111,65 @@ CREATE INDEX IF NOT EXISTS idx_sales_tiles_owner_id ON public.sales_tiles(owner_
 CREATE INDEX IF NOT EXISTS idx_sales_tiles_stage ON public.sales_tiles(stage);
 
 -- ============================================================================
--- 8. ENHANCE PROFILES TABLE - Add missing fields
+-- 8. LEADS TABLE - Leads management for commercial role
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.leads (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  company text,
+  email text,
+  phone text,
+  whatsapp text,
+  source text,
+  estimated_value numeric DEFAULT 0,
+  stage text DEFAULT 'contacted',
+  owner_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  notes text,
+  next_followup_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT leads_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_owner_id ON public.leads(owner_id);
+CREATE INDEX IF NOT EXISTS idx_leads_stage ON public.leads(stage);
+
+-- ============================================================================
+-- 9. LEAD_ACTIVITIES TABLE - Activities log for leads
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.lead_activities (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  lead_id uuid NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  kind text NOT NULL DEFAULT 'note',
+  body text,
+  occurred_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT lead_activities_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_activities_lead_id ON public.lead_activities(lead_id);
+
+-- ============================================================================
+-- 10. USER_KANBAN_COLUMNS TABLE - Personalized kanban columns per user
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.user_kanban_columns (
+  id text NOT NULL DEFAULT gen_random_uuid()::text,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  accent text NOT NULL DEFAULT 'bg-muted-foreground',
+  "order" integer NOT NULL DEFAULT 0,
+  base text,
+  is_custom boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_kanban_columns_pkey PRIMARY KEY (id),
+  CONSTRAINT unique_user_column UNIQUE (user_id, title)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_kanban_columns_user_id ON public.user_kanban_columns(user_id);
+
+-- ============================================================================
+-- 11. ENHANCE PROFILES TABLE - Add missing fields
 -- ============================================================================
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hourly_rate numeric;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS contract_start date;
@@ -179,6 +237,9 @@ ALTER TABLE public.client_services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.client_collaborators ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.team_clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_tiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lead_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_kanban_columns ENABLE ROW LEVEL SECURITY;
 
 -- Services - Everyone can read, only leaders can edit
 DROP POLICY IF EXISTS services_read_policy ON public.services;
@@ -240,6 +301,57 @@ CREATE POLICY sales_tiles_edit_policy ON public.sales_tiles
     owner_id = auth.uid() OR
     EXISTS(SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('leader', 'manager'))
   );
+
+-- Leads - Only leader and owner can read/edit
+DROP POLICY IF EXISTS leads_read_policy ON public.leads;
+CREATE POLICY leads_read_policy ON public.leads
+  FOR SELECT TO authenticated
+  USING (
+    owner_id = auth.uid() OR
+    EXISTS(SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'leader')
+  );
+
+DROP POLICY IF EXISTS leads_write_policy ON public.leads;
+CREATE POLICY leads_write_policy ON public.leads
+  FOR ALL TO authenticated
+  USING (
+    owner_id = auth.uid() OR
+    EXISTS(SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'leader')
+  )
+  WITH CHECK (
+    owner_id = auth.uid() OR
+    EXISTS(SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'leader')
+  );
+
+-- Lead Activities - Only lead viewers can see
+DROP POLICY IF EXISTS lead_activities_read_policy ON public.lead_activities;
+CREATE POLICY lead_activities_read_policy ON public.lead_activities
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS(
+      SELECT 1 FROM public.leads
+      WHERE leads.id = lead_activities.lead_id AND (
+        leads.owner_id = auth.uid() OR
+        EXISTS(SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'leader')
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS lead_activities_write_policy ON public.lead_activities;
+CREATE POLICY lead_activities_write_policy ON public.lead_activities
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+-- User Kanban Columns - Only user's own columns and template columns
+DROP POLICY IF EXISTS user_kanban_columns_read_policy ON public.user_kanban_columns;
+CREATE POLICY user_kanban_columns_read_policy ON public.user_kanban_columns
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS user_kanban_columns_write_policy ON public.user_kanban_columns;
+CREATE POLICY user_kanban_columns_write_policy ON public.user_kanban_columns
+  FOR ALL TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
 
 -- ============================================================================
 -- 14. FUNCTION: Automatically unlink collaborators when client becomes inactive

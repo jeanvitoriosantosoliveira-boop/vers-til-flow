@@ -67,12 +67,17 @@ export default function Reports() {
   function exportAll() {
     const periodLabel = period.preset === "week" ? "Últimos 7 dias" : period.preset === "month" ? "Último mês" : period.preset === "all" ? "Histórico completo" : "Período custom";
     if (tab === "clients") {
+      const meta: Record<string, string> = { "Clientes": clientRows.length, "Total horas": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)) };
+      if (isLeader) meta["Receita/mês"] = `R$ ${clientRows.reduce((s,r) => s+r.fee, 0).toLocaleString("pt-BR")}`;
+      
+      const head = ["Cliente", ...(isLeader ? ["Mensalidade"] : []), "Tarefas","Concluídas","Horas","Meta","Saúde"];
+      const rows = clientRows.map(r => [r.c.name, ...(isLeader ? [`R$ ${r.fee.toLocaleString("pt-BR")}`] : []), r.totalTasks, r.done, `${r.hours.toFixed(1)}h`, `${r.target}h`, r.c.health ?? "—"]);
+      
       exportReportPdf({
         title: "Relatório de Clientes",
         subtitle: periodLabel,
-        meta: { "Clientes": clientRows.length, "Total horas": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)), "Receita/mês": `R$ ${clientRows.reduce((s,r) => s+r.fee, 0).toLocaleString("pt-BR")}` },
-        sections: [{ title: "Clientes", head: ["Cliente","Mensalidade","Tarefas","Concluídas","Horas","Meta","Saúde"],
-          rows: clientRows.map(r => [r.c.name, `R$ ${r.fee.toLocaleString("pt-BR")}`, r.totalTasks, r.done, `${r.hours.toFixed(1)}h`, `${r.target}h`, r.c.health ?? "—"]) }],
+        meta,
+        sections: [{ title: "Clientes", head, rows }],
         fileName: "relatorio-clientes.pdf",
       });
     } else if (tab === "tasks") {
@@ -100,10 +105,15 @@ export default function Reports() {
     const c = clients.find(x => x.id === clientId)!;
     const ts = tasks.filter(t => t.client_id === c.id);
     const sec = timeEntries.filter(e => ts.some(t => t.id === e.task_id)).reduce((s,e) => s+e.seconds, 0);
+    const meta: Record<string, string> = {};
+    if (isLeader) meta["Mensalidade"] = `R$ ${(c.monthly_fee ?? 0).toLocaleString("pt-BR")}`;
+    meta["Meta"] = `${c.monthly_hours_target ?? 0}h/mês`;
+    meta["Total horas"] = formatSeconds(sec);
+    meta["Saúde"] = c.health ?? "—";
     exportReportPdf({
       title: `Cliente — ${c.name}`,
       subtitle: c.company ?? "",
-      meta: { "Mensalidade": `R$ ${(c.monthly_fee ?? 0).toLocaleString("pt-BR")}`, "Meta": `${c.monthly_hours_target ?? 0}h/mês`, "Total horas": formatSeconds(sec), "Saúde": c.health ?? "—" },
+      meta,
       sections: [
         { title: "Serviços contratados", head: ["Serviço"], rows: (c.services ?? []).map(s => [s]) },
         { title: "Tarefas", head: ["Título","Status","Responsável","Tempo","Prazo"], rows: ts.map(t => [t.title, statusLabel[t.status], users.find(u => u.id===t.assignee_id)?.name ?? "—", formatSeconds(t.total_seconds), t.due_date ? formatDate(t.due_date) : "—"]) },
@@ -184,7 +194,7 @@ export default function Reports() {
               <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold">Cliente</th>
-                  <th className="text-right px-4 py-3 font-semibold">Mensalidade</th>
+                  {isLeader && <th className="text-right px-4 py-3 font-semibold">Mensalidade</th>}
                   <th className="text-right px-4 py-3 font-semibold">Tarefas</th>
                   <th className="text-right px-4 py-3 font-semibold">Horas / Meta</th>
                   <th className="text-left px-4 py-3 font-semibold">Saúde</th>
@@ -206,7 +216,7 @@ export default function Reports() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-semibold">R$ {r.fee.toLocaleString("pt-BR")}</td>
+                      {isLeader && <td className="px-4 py-3 text-right tabular-nums font-semibold">R$ {r.fee.toLocaleString("pt-BR")}</td>}
                       <td className="px-4 py-3 text-right tabular-nums">{r.done}/{r.totalTasks}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center gap-2 justify-end">

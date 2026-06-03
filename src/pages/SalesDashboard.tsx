@@ -46,7 +46,7 @@ export default function SalesDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><Target className="w-3 h-3" /> Leads no funil</div><p className="font-display text-2xl font-bold mt-2">{openLeads.length}</p></Card>
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Pipeline</div><p className="font-display text-2xl font-bold mt-2 text-primary">{BRL(pipelineValue)}</p></Card>
-        <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ganhos do mês</div><p className="font-display text-2xl font-bold mt-2 text-success">{BRL(wonValue)}</p><p className="text-[10px] text-muted-foreground mt-1">{wonThisMonth.length} negócios</p></Card>
+        <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Vendidos</div><p className="font-display text-2xl font-bold mt-2 text-success">{BRL(wonValue)}</p><p className="text-[10px] text-muted-foreground mt-1">{wonThisMonth.length} negócios</p></Card>
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" /> Conversão</div><p className="font-display text-2xl font-bold mt-2">{conversion}%</p></Card>
       </div>
 

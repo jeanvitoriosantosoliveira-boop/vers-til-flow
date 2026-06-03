@@ -31,6 +31,7 @@ const nav: NavItem[] = [
   // Comercial
   { to: "/sales/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["commercial"] },
   { to: "/sales", label: "Funil de Vendas", icon: Target, roles: ["commercial","leader","manager"] },
+  { to: "/leads", label: "Leads", icon: Target, roles: ["commercial","leader","manager"] },
   { to: "/sales/agenda", label: "Agenda", icon: CalendarDays, roles: ["commercial","leader","manager"] },
 ];
 

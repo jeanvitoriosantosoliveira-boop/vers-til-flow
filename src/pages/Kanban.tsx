@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { PageHeader } from "@/components/PageHeader";
 import { Column } from "@/components/kanban/Column";
@@ -20,7 +21,15 @@ function columnOf(task: Task): string {
 }
 
 export default function Kanban() {
+  const navigate = useNavigate();
   const { tasks, clients, users, currentUser, moveTask, columns, createColumn, renameColumn, deleteColumn } = useApp();
+  
+  // Commercial users should not see task kanban - redirect to sales dashboard
+  if (currentUser.role === "commercial") {
+    navigate("/sales/dashboard");
+    return null;
+  }
+  
   const { query, setQuery } = useSearch();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

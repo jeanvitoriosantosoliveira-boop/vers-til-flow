@@ -27,6 +27,7 @@ import Studio from "./pages/Studio";
 import Services from "./pages/Services";
 import SalesFunnel from "./pages/SalesFunnel";
 import SalesAgenda from "./pages/SalesAgenda";
+import Leads from "./pages/Leads";
 import SalesDashboard from "./pages/SalesDashboard";
 import NotFound from "./pages/NotFound.tsx";
 import type { ReactNode } from "react";
@@ -78,6 +79,7 @@ const App = () => (
                       <Route path="/sales" element={<SalesFunnel />} />
                       <Route path="/sales/agenda" element={<SalesAgenda />} />
                       <Route path="/sales/dashboard" element={<SalesDashboard />} />
+                      <Route path="/leads" element={<Leads />} />
                     </Route>
                     <Route path="*" element={<NotFound />} />
                   </Routes>
