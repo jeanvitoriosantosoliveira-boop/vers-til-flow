@@ -92,11 +92,19 @@ function saveLS<T>(key: string, value: T) {
 }
 
 function mapRole(role?: string | null): Role {
-  return role === "leader" ? "leader" : "employee";
+  if (role === "leader" || role === "manager" || role === "commercial") return role;
+  return "collaborator";
 }
 
 function mapUser(profile: any, roles: any[], members: any[]): User {
-  const role = roles.find((r) => r.user_id === profile.id)?.role ?? "collaborator";
+  const roleList = roles.filter((r) => r.user_id === profile.id).map((r) => r.role);
+  const role = roleList.includes("leader")
+    ? "leader"
+    : roleList.includes("manager")
+    ? "manager"
+    : roleList.includes("commercial")
+    ? "commercial"
+    : "collaborator";
   const memberships = members.filter((m) => m.user_id === profile.id);
   const teamIds = memberships.map((m) => m.team_id);
 
@@ -383,6 +391,43 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (!usingBackend || !supabase) return;
+
+    const upsert = <T extends { id: string }>(items: T[], item: T) =>
+      items.some((x) => x.id === item.id) ? items.map((x) => x.id === item.id ? item : x) : [item, ...items];
+    const remove = <T extends { id: string }>(items: T[], id: string) => items.filter((x) => x.id !== id);
+
+    const channel = supabase
+      .channel("app-store-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (payload) => {
+        const row = payload.new ? mapTask(payload.new) : null;
+        if (payload.eventType === "DELETE") setTasks((prev) => remove(prev, (payload.old as any).id));
+        else if (row) setTasks((prev) => upsert(prev, row));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, (payload) => {
+        const row = payload.new ? mapClient(payload.new) : null;
+        if (payload.eventType === "DELETE") setClients((prev) => remove(prev, (payload.old as any).id));
+        else if (row) setClients((prev) => upsert(prev, row));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "comments" }, (payload) => {
+        if (payload.eventType === "DELETE") setComments((prev) => remove(prev, (payload.old as any).id));
+        else if (payload.new) setComments((prev) => upsert(prev, payload.new as Comment));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, (payload) => {
+        const row = payload.new ? mapTimeEntry(payload.new) : null;
+        if (payload.eventType === "DELETE") setTimeEntries((prev) => remove(prev, (payload.old as any).id));
+        else if (row) setTimeEntries((prev) => upsert(prev, row));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "kanban_columns" }, (payload) => {
+        if (payload.eventType === "DELETE") setColumns((prev) => remove(prev, (payload.old as any).id));
+        else if (payload.new) setColumns((prev) => upsert(prev, payload.new as KanbanColumn).sort((a, b) => a.order - b.order));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [usingBackend]);
+
   const authUserId = user?.id ?? users[0]?.id;
   const fromList = users.find(u => u.id === authUserId);
   const currentUser: User = fromList ?? (user
@@ -390,13 +435,26 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: (user.role === "collaborator" ? "employee" : user.role) as any,
+        role: user.role,
         avatar_url: user.avatar_url ?? null,
         is_manager: user.is_manager,
         team_ids: [],
         team_id: null,
       } as any
     : users[0]);
+
+  const notifyUser = useCallback(async (input: { type: "task_created" | "task_updated" | "task_done" | "info"; title: string; body?: string; user_id?: string | null }) => {
+    if (!input.user_id) return;
+    pushNotif({ ...input, user_id: input.user_id });
+    if (usingBackend && supabase) {
+      await supabase.from("notifications").insert({
+        user_id: input.user_id,
+        type: input.type,
+        title: input.title,
+        body: input.body ?? null,
+      } as any);
+    }
+  }, [pushNotif, usingBackend]);
 
   const createTask = useCallback(async (data: Partial<Task>) => {
     const newTask: Task = {
@@ -418,14 +476,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setTasks((prev) => [newTask, ...prev]);
     if (usingBackend && supabase) await supabase.from("tasks").insert(taskToDb(newTask));
     const assignee = users.find(u => u.id === newTask.assignee_id);
-    pushNotif({
+    await notifyUser({
       type: "task_created",
       title: "Nova tarefa criada",
       body: `${newTask.title}${assignee ? ` · atribuída a ${assignee.name}` : ""}`,
       user_id: newTask.assignee_id ?? undefined,
     });
     toast.success("Tarefa criada", { description: newTask.title });
-  }, [usingBackend, users, pushNotif, currentUser]);
+  }, [usingBackend, users, notifyUser, currentUser]);
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
     let prevTask: Task | undefined;
@@ -438,7 +496,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
     if (prevTask) {
       const isStatus = patch.status && patch.status !== prevTask.status;
-      pushNotif({
+      void notifyUser({
         type: patch.status === "done" ? "task_done" : "task_updated",
         title: patch.status === "done" ? "Tarefa concluída" : "Tarefa atualizada",
         body: `${prevTask.title}${isStatus ? ` → ${labelStatus(patch.status!)}` : ""}`,
@@ -466,7 +524,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           recurrence: prevTask.recurrence,
         };
         setTasks(prev => [nt, ...prev]);
-        pushNotif({
+        void notifyUser({
           type: "task_created",
           title: "Próxima ocorrência agendada",
           body: `${nt.title} → ${next.toLocaleDateString("pt-BR")}`,
@@ -474,7 +532,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  }, [usingBackend, pushNotif]);
+  }, [usingBackend, notifyUser]);
 
   const moveTask = useCallback(
     (id: string, target: { status?: TaskStatus; column_id?: string | null }) =>
@@ -507,7 +565,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     setClients((prev) => [c, ...prev]);
     if (usingBackend && supabase) await supabase.from("clients").insert(clientToDb(c));
-    pushNotif({ type: "info", title: "Novo cliente", body: c.name });
     toast.success("Cliente criado", { description: c.name });
   }, [usingBackend, pushNotif]);
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { Card } from "@/components/ui/card";
@@ -14,18 +14,32 @@ import {
 import { formatSeconds, formatDate } from "@/lib/format";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { exportReportPdf } from "@/lib/exportPdf";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export default function TeamMemberDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { users, tasks, clients, timeEntries, currentUser, teamNotes, addTeamNote, deleteTeamNote, updateUser } = useApp();
 
-  if (currentUser.role !== "leader") return <Navigate to="/" replace />;
+  if (currentUser.role !== "leader" && currentUser.role !== "manager") return <Navigate to="/" replace />;
+  const isLeader = currentUser.role === "leader";
 
   const member = users.find(u => u.id === id);
   const [note, setNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ position: "", salary: 0, tax_rate: 0, hire_date: "" });
+  const [manualClientIds, setManualClientIds] = useState<string[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState("");
+
+  useEffect(() => {
+    if (!id) return;
+    supabase
+      .from("client_collaborators")
+      .select("client_id")
+      .eq("user_id", id)
+      .then(({ data }) => setManualClientIds([...(new Set((data ?? []).map((r: any) => r.client_id)))]));
+  }, [id]);
 
   if (!member) return (
     <div className="max-w-3xl mx-auto py-12 text-center">
@@ -41,7 +55,7 @@ export default function TeamMemberDetail() {
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   const monthSeconds = memberEntries.filter(e => new Date(e.logged_at) >= monthStart).reduce((s,e) => s+e.seconds, 0);
 
-  const memberClientIds = [...new Set(memberTasks.map(t => t.client_id).filter(Boolean) as string[])];
+  const memberClientIds = [...new Set([...manualClientIds, ...(memberTasks.map(t => t.client_id).filter(Boolean) as string[])])];
   const memberClients = clients.filter(c => memberClientIds.includes(c.id));
   const avgSatisfaction = memberClients.length
     ? memberClients.reduce((s,c) => s + (c.satisfaction ?? 0), 0) / memberClients.length
@@ -99,9 +113,11 @@ export default function TeamMemberDetail() {
         "Horas total": formatSeconds(totalSeconds),
         "Horas mês":   formatSeconds(monthSeconds),
         "Satisfação clientes": `${avgSatisfaction.toFixed(1)} / 5`,
-        "Salário":      `R$ ${salary.toLocaleString("pt-BR")}`,
-        "Imposto":      `${taxRate}% (R$ ${taxValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })})`,
-        "Custo total":  `R$ ${totalCost.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`,
+        ...(isLeader ? {
+          "Salário":      `R$ ${salary.toLocaleString("pt-BR")}`,
+          "Imposto":      `${taxRate}% (R$ ${taxValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })})`,
+          "Custo total":  `R$ ${totalCost.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`,
+        } : {}),
       },
       sections: [
         { title: "Tarefas recentes", head: ["Título","Cliente","Status","Atualizada"],
@@ -111,6 +127,36 @@ export default function TeamMemberDetail() {
       ],
       fileName: `funcionario-${member!.name.toLowerCase().replace(/\s+/g,'-')}.pdf`,
     });
+  }
+
+  async function linkClient() {
+    if (!selectedClientId || !member) return;
+    const { error } = await supabase.from("client_collaborators").insert({
+      client_id: selectedClientId,
+      user_id: member.id,
+      source: "manual",
+    } as any);
+    if (error) return toast.error(error.message);
+    setManualClientIds((prev) => [...new Set([...prev, selectedClientId])]);
+    setSelectedClientId("");
+    toast.success("Cliente vinculado");
+  }
+
+  async function unlinkClient(clientId: string) {
+    if (!member) return;
+    const { error } = await supabase.from("client_collaborators").delete().eq("client_id", clientId).eq("user_id", member.id).eq("source", "manual");
+    if (error) return toast.error(error.message);
+    setManualClientIds((prev) => prev.filter((id) => id !== clientId));
+    toast.success("Cliente desvinculado");
+  }
+
+  async function removeMember() {
+    if (!member || !isLeader) return;
+    if (!confirm(`Remover ${member.name}? Esta ação é permanente.`)) return;
+    const { data, error } = await supabase.functions.invoke("delete-user", { body: { user_id: member.id } });
+    if (error || (data as any)?.error) return toast.error((data as any)?.error ?? error?.message ?? "Erro ao remover");
+    toast.success("Usuário removido");
+    navigate("/team");
   }
 
   return (
@@ -138,8 +184,9 @@ export default function TeamMemberDetail() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={exportPdf} className="gap-2"><FileDown className="w-4 h-4" /> Exportar PDF</Button>
-            {!editing ? <Button onClick={startEdit} className="gap-2"><Edit3 className="w-4 h-4" /> Editar</Button>
-                      : <Button onClick={saveEdit} className="gap-2"><Save className="w-4 h-4" /> Salvar</Button>}
+            {isLeader && <Button variant="destructive" onClick={removeMember} className="gap-2"><Trash2 className="w-4 h-4" /> Remover</Button>}
+            {isLeader && (!editing ? <Button onClick={startEdit} className="gap-2"><Edit3 className="w-4 h-4" /> Editar</Button>
+                      : <Button onClick={saveEdit} className="gap-2"><Save className="w-4 h-4" /> Salvar</Button>)}
           </div>
         </div>
       </Card>
@@ -178,7 +225,7 @@ export default function TeamMemberDetail() {
       </div>
 
       {/* Editor */}
-      {editing && (
+      {editing && isLeader && (
         <Card className="p-6 mb-6 border-accent/40">
           <h3 className="font-display font-semibold mb-4">Dados profissionais e financeiros</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -191,7 +238,7 @@ export default function TeamMemberDetail() {
       )}
 
       {/* Financeiro */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {isLeader && <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card className="p-5">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><DollarSign className="w-3.5 h-3.5" /> Salário bruto</div>
           <p className="font-display text-2xl font-bold tabular-nums">R$ {salary.toLocaleString("pt-BR")}</p>
@@ -205,7 +252,7 @@ export default function TeamMemberDetail() {
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-semibold uppercase mb-2"><DollarSign className="w-3.5 h-3.5" /> Custo total mensal</div>
           <p className="font-display text-2xl font-bold tabular-nums text-destructive">R$ {totalCost.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</p>
         </Card>
-      </div>
+      </div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Trend */}
@@ -250,6 +297,30 @@ export default function TeamMemberDetail() {
             ))}
             {!memberClients.length && <p className="text-xs text-muted-foreground">Nenhum cliente vinculado.</p>}
           </div>
+          <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+            <select
+              className="flex-1 text-xs px-2 py-1.5 rounded-md border bg-background"
+              value={selectedClientId}
+              onChange={(e) => setSelectedClientId(e.target.value)}
+            >
+              <option value="">Vincular cliente...</option>
+              {clients.filter((c) => !memberClientIds.includes(c.id) && c.status === "active").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <Button size="sm" onClick={linkClient}>Vincular</Button>
+          </div>
+          {manualClientIds.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {manualClientIds.map((clientId) => {
+                const client = clients.find((c) => c.id === clientId);
+                return (
+                  <Badge key={clientId} variant="outline" className="gap-1">
+                    {client?.name ?? "Cliente"}
+                    <button onClick={() => unlinkClient(clientId)} className="ml-1 opacity-60 hover:opacity-100">×</button>
+                  </Badge>
+                );
+              })}
+            </div>
+          )}
         </Card>
       </div>
 

@@ -10,9 +10,9 @@ import { ChevronRight, Briefcase } from "lucide-react";
 export default function Team() {
   const { users, tasks, currentUser } = useApp();
   const navigate = useNavigate();
-  if (currentUser.role !== "leader") return <Navigate to="/" replace />;
+  if (currentUser.role !== "leader" && currentUser.role !== "manager") return <Navigate to="/" replace />;
 
-  const team = useMemo(() => users.filter(u => u.role === "employee").map(u => {
+  const team = useMemo(() => users.filter(u => u.role !== "leader" && u.role !== "commercial").map(u => {
     const t = tasks.filter(x => x.assignee_id === u.id);
     const done = t.filter(x => x.status === "done").length;
     const inProg = t.filter(x => x.status === "in_progress").length;

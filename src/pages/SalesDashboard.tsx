@@ -1,31 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Target, TrendingUp, CheckCircle2, Calendar, MessageCircle } from "lucide-react";
+import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 
 const BRL = (v: number) => `R$ ${(v ?? 0).toLocaleString("pt-BR")}`;
 function waLink(n?: string | null) { if (!n) return null; const d = n.replace(/\D/g, ""); return d ? `https://wa.me/${d}` : null; }
 
 export default function SalesDashboard() {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<any[]>([]);
   const [stages, setStages] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [period, setPeriod] = useState<Period>({ preset: "month" });
 
   async function load() {
+    let leadQuery = supabase.from("leads").select("*");
+    let eventsQuery = supabase.from("sales_events").select("*").gte("start_at", new Date().toISOString()).order("start_at").limit(5);
+    if (user?.role === "commercial") {
+      leadQuery = leadQuery.eq("owner_id", user.id);
+      eventsQuery = eventsQuery.eq("owner_id", user.id);
+    }
     const [l, s, e] = await Promise.all([
-      supabase.from("leads").select("*"),
+      leadQuery,
       supabase.from("lead_stages").select("*").order("position"),
-      supabase.from("sales_events").select("*").gte("start_at", new Date().toISOString()).order("start_at").limit(5),
+      eventsQuery,
     ]);
     if (l.data) setLeads(l.data);
     if (s.data) setStages(s.data);
     if (e.data) setEvents(e.data);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user?.id, user?.role]);
+  useEffect(() => {
+    const ch = supabase
+      .channel("sales-dashboard-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_stages" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales_events" }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user?.id, user?.role]);
 
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
 
@@ -33,7 +52,7 @@ export default function SalesDashboard() {
   const lostStage = stages.find(s => s.is_lost);
   const openLeads = leads.filter(l => l.stage_id !== wonStage?.id && l.stage_id !== lostStage?.id);
   const pipelineValue = openLeads.reduce((s, l) => s + Number(l.estimated_value || 0), 0);
-  const wonThisMonth = leads.filter(l => l.stage_id === wonStage?.id && new Date(l.updated_at || l.created_at) >= monthStart);
+  const wonThisMonth = leads.filter(l => l.stage_id === wonStage?.id && inPeriod(l.updated_at || l.created_at, period));
   const wonValue = wonThisMonth.reduce((s, l) => s + Number(l.estimated_value || 0), 0);
   const conversion = leads.length ? Math.round((leads.filter(l => l.stage_id === wonStage?.id).length / leads.length) * 100) : 0;
 
@@ -41,12 +60,12 @@ export default function SalesDashboard() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      <PageHeader title="Comercial" subtitle="Visão geral do seu funil de vendas." />
+      <PageHeader title="Comercial" subtitle={user?.role === "leader" ? "Visão geral de todo o comercial." : "Visão geral do seu funil de vendas."} actions={<PeriodFilter value={period} onChange={setPeriod} />} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><Target className="w-3 h-3" /> Leads no funil</div><p className="font-display text-2xl font-bold mt-2">{openLeads.length}</p></Card>
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Pipeline</div><p className="font-display text-2xl font-bold mt-2 text-primary">{BRL(pipelineValue)}</p></Card>
-        <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Vendidos</div><p className="font-display text-2xl font-bold mt-2 text-success">{BRL(wonValue)}</p><p className="text-[10px] text-muted-foreground mt-1">{wonThisMonth.length} negócios</p></Card>
+        <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Vendidos no período</div><p className="font-display text-2xl font-bold mt-2 text-success">{BRL(wonValue)}</p><p className="text-[10px] text-muted-foreground mt-1">{wonThisMonth.length} negócios</p></Card>
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" /> Conversão</div><p className="font-display text-2xl font-bold mt-2">{conversion}%</p></Card>
       </div>
 

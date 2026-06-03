@@ -24,14 +24,28 @@ export default function SalesAgenda() {
   const [form, setForm] = useState<Partial<SEvent>>({ kind: "meeting", start_at: new Date().toISOString().slice(0, 16) });
 
   async function load() {
+    let eventsQuery = supabase.from("sales_events").select("*").order("start_at");
+    let leadsQuery = supabase.from("leads").select("id,name");
+    if (user?.role === "commercial") {
+      eventsQuery = eventsQuery.eq("owner_id", user.id);
+      leadsQuery = leadsQuery.eq("owner_id", user.id);
+    }
     const [e, l] = await Promise.all([
-      supabase.from("sales_events").select("*").order("start_at"),
-      supabase.from("leads").select("id,name"),
+      eventsQuery,
+      leadsQuery,
     ]);
     if (e.data) setEvents(e.data as any);
     if (l.data) setLeads(l.data as any);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user?.id, user?.role]);
+  useEffect(() => {
+    const ch = supabase
+      .channel("sales-agenda-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales_events" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user?.id, user?.role]);
 
   async function save() {
     if (!form.title?.trim() || !form.start_at) return toast.error("Título e data obrigatórios");

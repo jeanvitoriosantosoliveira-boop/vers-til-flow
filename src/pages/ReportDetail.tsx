@@ -23,6 +23,7 @@ export default function ReportDetail() {
 
   if (!type || !["clients","tasks","team","financial"].includes(type)) return <Navigate to="/reports" replace />;
   if ((type === "team" || type === "financial") && currentUser.role !== "leader") return <Navigate to="/" replace />;
+  const isLeader = currentUser.role === "leader";
 
   const meta = ({
     clients:   { title: "Relatório de Clientes",   icon: Building,   color: "from-primary to-accent" },
@@ -45,7 +46,7 @@ export default function ReportDetail() {
     return Object.entries(counts).map(([k,v]) => ({ name: STATUS_LABEL[k], value: v, color: STATUS_COLOR[k] }));
   }, [tasks]);
 
-  const teamRows = useMemo(() => users.filter(u => u.role === "employee").map(u => {
+  const teamRows = useMemo(() => users.filter(u => u.role !== "leader" && u.role !== "commercial").map(u => {
     const ts = tasks.filter(t => t.assignee_id === u.id);
     const sec = timeEntries.filter(e => e.user_id === u.id).reduce((s,e) => s+e.seconds, 0);
     return { u, total: ts.length, done: ts.filter(t => t.status === "done").length, seconds: sec, hours: Math.round(sec/3600) };
@@ -61,11 +62,25 @@ export default function ReportDetail() {
   // ---------- EXPORT ----------
   function exportPdf() {
     if (type === "clients") {
+      const clientHead = ["Cliente","Empresa", ...(isLeader ? ["Mensalidade"] : []), "Tarefas","Concluídas","Horas","Saúde"];
+      const clientRowsPdf = clientRows.map(r => [
+        r.c.name,
+        r.c.company ?? "—",
+        ...(isLeader ? [BRL(r.c.monthly_fee ?? 0)] : []),
+        r.total,
+        r.done,
+        formatSeconds(r.seconds),
+        r.c.health ?? "—",
+      ]);
+      const clientMeta: Record<string, string> = {
+        "Clientes": String(clientRows.length),
+        "Horas totais": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)),
+      };
+      if (isLeader) clientMeta["Receita/mês"] = BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0),0));
       exportReportPdf({
         title: meta.title, subtitle: `Gerado em ${new Date().toLocaleDateString("pt-BR")}`,
-        meta: { "Clientes": clientRows.length, "Receita/mês": BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0),0)), "Horas totais": formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0)) },
-        sections: [{ title: "Clientes", head: ["Cliente","Empresa","Mensalidade","Tarefas","Concluídas","Horas","Saúde"],
-          rows: clientRows.map(r => [r.c.name, r.c.company ?? "—", BRL(r.c.monthly_fee ?? 0), r.total, r.done, formatSeconds(r.seconds), r.c.health ?? "—"]) }],
+        meta: clientMeta,
+        sections: [{ title: "Clientes", head: clientHead, rows: clientRowsPdf }],
         fileName: "relatorio-clientes.pdf",
       });
     } else if (type === "tasks") {
@@ -124,25 +139,27 @@ export default function ReportDetail() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <KPI label="Total de clientes" value={clientRows.length.toString()} />
             <KPI label="Ativos"      value={clients.filter(c => c.status==="active").length.toString()} tone="success" />
-            <KPI label="Receita/mês" value={BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0), 0))} tone="primary" />
+            {isLeader && <KPI label="Receita/mês" value={BRL(clients.reduce((s,c) => s+(c.monthly_fee ?? 0), 0))} tone="primary" />}
             <KPI label="Horas totais" value={formatSeconds(clientRows.reduce((s,r) => s+r.seconds, 0))} />
           </div>
-          <Card className="p-6 mb-6">
-            <h3 className="font-display font-semibold mb-4">Receita por cliente</h3>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={clients.map(c => ({ name: c.name, Receita: c.monthly_fee ?? 0 }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 12 }} formatter={(v: number) => BRL(v)} />
-                  <Bar dataKey="Receita" fill="hsl(var(--primary))" radius={[6,6,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-          <DataTable head={["Cliente","Mensalidade","Tarefas","Concluídas","Horas","Saúde"]} rows={clientRows.map(r => [
-            r.c.name, BRL(r.c.monthly_fee ?? 0), r.total, r.done, formatSeconds(r.seconds), <Badge key={r.c.id} variant="outline">{r.c.health ?? "—"}</Badge>
+          {isLeader && (
+            <Card className="p-6 mb-6">
+              <h3 className="font-display font-semibold mb-4">Receita por cliente</h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={clients.map(c => ({ name: c.name, Receita: c.monthly_fee ?? 0 }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 12 }} formatter={(v: number) => BRL(v)} />
+                    <Bar dataKey="Receita" fill="hsl(var(--primary))" radius={[6,6,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          )}
+          <DataTable head={["Cliente", ...(isLeader ? ["Mensalidade"] : []), "Tarefas","Concluídas","Horas","Saúde"]} rows={clientRows.map(r => [
+            r.c.name, ...(isLeader ? [BRL(r.c.monthly_fee ?? 0)] : []), r.total, r.done, formatSeconds(r.seconds), <Badge key={r.c.id} variant="outline">{r.c.health ?? "—"}</Badge>
           ])} />
         </>
       )}

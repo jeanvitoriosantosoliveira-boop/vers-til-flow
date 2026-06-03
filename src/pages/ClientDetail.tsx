@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { Card } from "@/components/ui/card";
@@ -8,11 +8,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Building2, Mail, Phone, Calendar, DollarSign, Clock, Star, Save, Heart, FileDown, AlertTriangle, CheckCircle2, Sparkles, Edit3 } from "lucide-react";
+import { ArrowLeft, Building2, Mail, Phone, Calendar, DollarSign, Clock, Star, Save, Heart, FileDown, AlertTriangle, CheckCircle2, Sparkles, Edit3, Plus, Trash2 } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 import type { Client } from "@/types";
 import { exportReportPdf } from "@/lib/exportPdf";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface AgencyService {
+  id: string;
+  name: string;
+  description: string | null;
+  default_price: number | null;
+  is_active: boolean;
+}
+
+interface ClientService {
+  id: string;
+  client_id: string;
+  service_id: string;
+  monthly_price: number | null;
+}
+
+interface ClientCollaborator {
+  id: string;
+  client_id: string;
+  user_id: string;
+  team_id: string | null;
+}
 
 const healthMap = {
   great:   { label: "Excelente", color: "text-success", bg: "bg-success/15", bar: "bg-success" },
@@ -28,6 +52,23 @@ export default function ClientDetail() {
   const client = clients.find(c => c.id === id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
+  const [services, setServices] = useState<AgencyService[]>([]);
+  const [clientServices, setClientServices] = useState<ClientService[]>([]);
+  const [clientCollaborators, setClientCollaborators] = useState<ClientCollaborator[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState("");
+
+  useEffect(() => {
+    if (!id) return;
+    Promise.all([
+      supabase.from("services").select("*").eq("is_active", true).order("name"),
+      supabase.from("client_services").select("*").eq("client_id", id),
+      supabase.from("client_collaborators").select("*").eq("client_id", id),
+    ]).then(([svc, links, collabs]) => {
+      if (svc.data) setServices(svc.data as AgencyService[]);
+      if (links.data) setClientServices(links.data as ClientService[]);
+      if (collabs.data) setClientCollaborators(collabs.data as ClientCollaborator[]);
+    });
+  }, [id]);
 
   if (!client) return (
     <div className="max-w-3xl mx-auto py-12 text-center">
@@ -76,26 +117,54 @@ export default function ClientDetail() {
     return [...map.entries()].map(([uid, s]) => ({ user: users.find(u => u.id === uid), seconds: s }))
       .filter(x => x.user).sort((a,b) => b.seconds - a.seconds);
   }, [clientEntries, users]);
+  const involvedUsers = useMemo(() => {
+    const secondsByUser = new Map(byUser.map((item) => [item.user!.id, item.seconds]));
+    const ids = new Set([...clientCollaborators.map((c) => c.user_id), ...byUser.map((item) => item.user!.id)]);
+    return [...ids]
+      .map((uid) => ({ user: users.find((u) => u.id === uid), seconds: secondsByUser.get(uid) ?? 0 }))
+      .filter((item) => item.user);
+  }, [byUser, clientCollaborators, users]);
 
   const health = healthMap[client.health ?? "good"];
 
   function startEdit() { setDraft(client!); setEditing(true); }
   function saveEdit() { updateClient(client!.id, draft); setEditing(false); }
+  async function linkService() {
+    if (!selectedServiceId || !client) return;
+    if (clientServices.some((s) => s.service_id === selectedServiceId)) return;
+    const service = services.find((s) => s.id === selectedServiceId);
+    const { data, error } = await supabase
+      .from("client_services")
+      .insert({ client_id: client.id, service_id: selectedServiceId, monthly_price: service?.default_price ?? null } as any)
+      .select("*")
+      .single();
+    if (error) return toast.error(error.message);
+    setClientServices((prev) => [data as ClientService, ...prev]);
+    setSelectedServiceId("");
+    toast.success("Serviço vinculado");
+  }
+  async function unlinkService(linkId: string) {
+    const { error } = await supabase.from("client_services").delete().eq("id", linkId);
+    if (error) return toast.error(error.message);
+    setClientServices((prev) => prev.filter((s) => s.id !== linkId));
+    toast.success("Serviço removido do cliente");
+  }
 
   function exportPdf() {
+    const pdfMeta: Record<string, string> = {
+      "Meta de horas/mês": `${target}h`,
+      "Horas no mês": `${monthHours.toFixed(1)}h (${usagePct}%)`,
+      "Satisfação": `${(client!.satisfaction ?? 0).toFixed(1)} / 5`,
+      "Saúde": health.label,
+      "Início do contrato": client!.contract_start ? formatDate(client!.contract_start) : "—",
+    };
+    if (isLeader) pdfMeta["Mensalidade"] = `R$ ${fee.toLocaleString("pt-BR")}`;
     exportReportPdf({
       title: `Relatório do cliente — ${client!.name}`,
       subtitle: client!.company ?? "",
-      meta: {
-        "Mensalidade": `R$ ${fee.toLocaleString("pt-BR")}`,
-        "Meta de horas/mês": `${target}h`,
-        "Horas no mês": `${monthHours.toFixed(1)}h (${usagePct}%)`,
-        "Satisfação": `${(client!.satisfaction ?? 0).toFixed(1)} / 5`,
-        "Saúde": health.label,
-        "Início do contrato": client!.contract_start ? formatDate(client!.contract_start) : "—",
-      },
+      meta: pdfMeta,
       sections: [
-        { title: "Serviços contratados", head: ["Serviço"], rows: (client!.services ?? []).map(s => [s]) },
+        { title: "Serviços contratados", head: ["Serviço"], rows: clientServices.map((link) => [services.find((s) => s.id === link.service_id)?.name ?? "Serviço"]) },
         { title: "Tarefas", head: ["Título","Status","Responsável","Tempo","Prazo"],
           rows: clientTasks.map(t => {
             const a = users.find(u => u.id === t.assignee_id);
@@ -176,16 +245,15 @@ export default function ClientDetail() {
           <div className="flex items-center gap-1">
             {[1,2,3,4,5].map(n => (
               <button key={n} type="button"
-                disabled={!isLeader}
                 onClick={() => setClientSatisfaction(client.id, n)}
-                className={isLeader ? "transition hover:scale-110 cursor-pointer" : "cursor-default"}
+                className="transition hover:scale-110 cursor-pointer"
                 aria-label={`Definir ${n} estrelas`}>
                 <Star className={`w-5 h-5 ${n <= Math.round(client.satisfaction ?? 0) ? "fill-warning text-warning" : "text-muted-foreground/30"}`} />
               </button>
             ))}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {(client.satisfaction ?? 0).toFixed(1)} / 5 {isLeader && <span className="text-[10px]">· clique para registrar</span>}
+            {(client.satisfaction ?? 0).toFixed(1)} / 5 <span className="text-[10px]">· clique para registrar</span>
           </p>
         </Card>
         {isLeader && (
@@ -255,18 +323,44 @@ export default function ClientDetail() {
 
         <Card className="p-6">
           <h3 className="font-display font-semibold mb-1">Serviços contratados</h3>
-          <p className="text-xs text-muted-foreground mb-4">{(client.services ?? []).length} ativos</p>
-          <div className="flex flex-wrap gap-2">
-            {(client.services ?? []).map(s => (
-              <Badge key={s} variant="secondary" className="bg-accent/10 text-accent border-accent/20">{s}</Badge>
-            ))}
-            {!(client.services?.length) && <p className="text-xs text-muted-foreground">Nenhum serviço cadastrado.</p>}
+          <p className="text-xs text-muted-foreground mb-4">{clientServices.length} ativo(s)</p>
+          <div className="space-y-2">
+            {clientServices.map((link) => {
+              const service = services.find((s) => s.id === link.service_id);
+              return (
+                <div key={link.id} className="flex items-center justify-between gap-2 rounded-lg border border-border p-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{service?.name ?? "Serviço"}</p>
+                    {service?.description && <p className="text-[10px] text-muted-foreground truncate">{service.description}</p>}
+                  </div>
+                  {isLeader && (
+                    <Button size="icon" variant="ghost" onClick={() => unlinkService(link.id)} aria-label="Remover serviço">
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+            {!clientServices.length && <p className="text-xs text-muted-foreground">Nenhum serviço cadastrado.</p>}
+            {isLeader && (
+              <div className="flex gap-2 pt-2">
+                <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Vincular serviço..." /></SelectTrigger>
+                  <SelectContent>
+                    {services
+                      .filter((s) => !clientServices.some((link) => link.service_id === s.id))
+                      .map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" onClick={linkService} className="gap-1"><Plus className="w-3 h-3" /> Vincular</Button>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-border my-4" />
           <h4 className="text-sm font-semibold mb-2">Equipe envolvida</h4>
           <div className="space-y-2">
-            {byUser.map(({ user, seconds }) => (
+            {involvedUsers.map(({ user, seconds }) => (
               <div key={user!.id} className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center text-[10px] font-semibold text-primary-foreground">
                   {user!.name.split(" ").map(n => n[0]).slice(0,2).join("")}
@@ -278,7 +372,7 @@ export default function ClientDetail() {
                 <span className="text-xs tabular-nums text-muted-foreground">{formatSeconds(seconds)}</span>
               </div>
             ))}
-            {!byUser.length && <p className="text-xs text-muted-foreground">Sem horas lançadas.</p>}
+            {!involvedUsers.length && <p className="text-xs text-muted-foreground">Nenhum colaborador vinculado.</p>}
           </div>
         </Card>
       </div>
@@ -368,6 +462,17 @@ export default function ClientDetail() {
                   <SelectItem value="good">Saudável</SelectItem>
                   <SelectItem value="warning">Atenção</SelectItem>
                   <SelectItem value="risk">Em risco</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={draft.status ?? "active"} onValueChange={(v) => setDraft({...draft, status: v as Client["status"]})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Ativo</SelectItem>
+                  <SelectItem value="paused">Pausado</SelectItem>
+                  <SelectItem value="archived">Arquivado</SelectItem>
                 </SelectContent>
               </Select>
             </div>

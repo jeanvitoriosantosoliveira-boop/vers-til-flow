@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase, Music2, Target, CalendarDays } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase, Camera, Target, CalendarDays } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -24,9 +24,9 @@ const nav: NavItem[] = [
   { to: "/team", label: "Equipe", icon: UserCog, roles: ["leader","manager"] },
   { to: "/collaborators", label: "Colaboradores", icon: UserPlus, roles: ["leader","manager"] },
   { to: "/teams", label: "Times", icon: Network, roles: ["leader","manager"] },
-  { to: "/services", label: "Serviços", icon: Briefcase, roles: ["leader","manager"] },
+  { to: "/services", label: "Serviços", icon: Briefcase, roles: ["leader"] },
   { to: "/finance", label: "Financeiro", icon: Wallet, roles: ["leader"] },
-  { to: "/studio", label: "Studio", icon: Music2, roles: ["leader"] },
+  { to: "/studio", label: "Studio", icon: Camera, roles: ["leader"] },
   { to: "/time", label: "Tempo", icon: Timer, roles: ["leader","manager","collaborator"] },
   // Comercial
   { to: "/sales/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["commercial"] },
@@ -140,8 +140,10 @@ export function AppLayout() {
             <NotificationsBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold shadow-glow hover:scale-105 transition">
-                  {currentUser.name.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                <button className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xs font-semibold shadow-glow hover:scale-105 transition overflow-hidden">
+                  {currentUser.avatar_url
+                    ? <img src={currentUser.avatar_url} alt={currentUser.name} className="w-full h-full object-cover" />
+                    : currentUser.name.split(" ").map(n => n[0]).slice(0, 2).join("")}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">

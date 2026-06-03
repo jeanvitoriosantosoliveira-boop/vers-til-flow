@@ -13,25 +13,33 @@ import { Plus, Users2, Trash2 } from "lucide-react";
 type Team = { id: string; name: string; description: string | null; color: string | null; leader_id: string | null };
 type Member = { id: string; team_id: string; user_id: string; role_in_team: "manager" | "member" };
 type Profile = { id: string; name: string };
+type Client = { id: string; name: string; status: string };
+type TeamClient = { id: string; team_id: string; client_id: string };
 
 export default function TeamsDB() {
   const { user } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [teamClients, setTeamClients] = useState<TeamClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
 
   async function load() {
     setLoading(true);
-    const [t, m, p] = await Promise.all([
+    const [t, m, p, c, tc] = await Promise.all([
       supabase.from("teams").select("*").order("name"),
       supabase.from("team_members").select("*"),
       supabase.from("profiles").select("id,name").order("name"),
+      supabase.from("clients").select("id,name,status").neq("status", "archived").order("name"),
+      supabase.from("team_clients").select("*"),
     ]);
     setTeams((t.data as any) ?? []);
     setMembers((m.data as any) ?? []);
     setProfiles((p.data as any) ?? []);
+    setClients((c.data as any) ?? []);
+    setTeamClients((tc.data as any) ?? []);
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
@@ -41,6 +49,7 @@ export default function TeamsDB() {
   async function removeMember(teamId: string, userId: string) {
     const { error } = await supabase.from("team_members").delete().eq("team_id", teamId).eq("user_id", userId);
     if (error) return toast.error(error.message);
+    await supabase.from("client_collaborators").delete().eq("team_id", teamId).eq("user_id", userId).eq("source", "team");
     load();
   }
 
@@ -48,6 +57,36 @@ export default function TeamsDB() {
     if (!userId) return;
     const { error } = await supabase.from("team_members").insert({ team_id: teamId, user_id: userId, role_in_team: role });
     if (error) return toast.error(error.message);
+    const linkedClients = teamClients.filter((tc) => tc.team_id === teamId);
+    if (linkedClients.length) {
+      await supabase.from("client_collaborators").insert(linkedClients.map((tc) => ({
+        client_id: tc.client_id,
+        user_id: userId,
+        team_id: teamId,
+        source: "team",
+      })) as any);
+    }
+    load();
+  }
+
+  async function addClientToTeam(teamId: string, clientId: string) {
+    if (!clientId) return;
+    const { error } = await supabase.from("team_clients").insert({ team_id: teamId, client_id: clientId } as any);
+    if (error) return toast.error(error.message);
+
+    const rows = members
+      .filter((m) => m.team_id === teamId)
+      .map((m) => ({ client_id: clientId, user_id: m.user_id, team_id: teamId, source: "team" }));
+    if (rows.length) await supabase.from("client_collaborators").insert(rows as any);
+    toast.success("Cliente vinculado ao time");
+    load();
+  }
+
+  async function removeClientFromTeam(teamId: string, clientId: string) {
+    const { error } = await supabase.from("team_clients").delete().eq("team_id", teamId).eq("client_id", clientId);
+    if (error) return toast.error(error.message);
+    await supabase.from("client_collaborators").delete().eq("team_id", teamId).eq("client_id", clientId).eq("source", "team");
+    toast.success("Cliente removido do time");
     load();
   }
 
@@ -82,6 +121,8 @@ export default function TeamsDB() {
           {teams.map(t => {
             const tm = members.filter(m => m.team_id === t.id);
             const available = profiles.filter(p => !tm.some(x => x.user_id === p.id));
+            const linkedClients = teamClients.filter((tc) => tc.team_id === t.id);
+            const availableClients = clients.filter((c) => c.status === "active" && !linkedClients.some((tc) => tc.client_id === c.id));
             return (
               <Card key={t.id} className="p-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -134,6 +175,35 @@ export default function TeamsDB() {
                         {available.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                     </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 mt-4 pt-4 border-t border-border">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Clientes vinculados
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {linkedClients.map((link) => {
+                      const client = clients.find((c) => c.id === link.client_id);
+                      return (
+                        <Badge key={link.id} variant="outline" className="gap-1">
+                          {client?.name ?? "Cliente"}
+                          {isAdmin && (
+                            <button onClick={() => removeClientFromTeam(t.id, link.client_id)} className="ml-1 opacity-60 hover:opacity-100">×</button>
+                          )}
+                        </Badge>
+                      );
+                    })}
+                    {linkedClients.length === 0 && <span className="text-xs text-muted-foreground">Sem clientes vinculados</span>}
+                  </div>
+                  {isAdmin && availableClients.length > 0 && (
+                    <select
+                      className="w-full text-xs px-2 py-1.5 rounded-md border bg-background"
+                      onChange={e => { if (e.target.value) { addClientToTeam(t.id, e.target.value); e.target.value = ""; } }}
+                    >
+                      <option value="">+ Vincular cliente...</option>
+                      {availableClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
                   )}
                 </div>
               </Card>

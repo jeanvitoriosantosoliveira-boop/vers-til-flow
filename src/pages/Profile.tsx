@@ -103,7 +103,7 @@ export default function Profile() {
             <p className="text-xs text-muted-foreground">{user.email}</p>
             <Badge variant="outline" className="mt-2 gap-1 border-accent/40 text-accent">
               <Sparkles className="w-3 h-3" />
-              {user.role === "leader" ? "Líder" : user.is_manager ? "Gerente" : "Colaborador"}
+              {user.role === "leader" ? "Líder" : user.role === "commercial" ? "Comercial" : user.is_manager ? "Gerente" : "Colaborador"}
             </Badge>
             {draft.position && <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1"><Briefcase className="w-3 h-3" /> {draft.position}</p>}
           </div>

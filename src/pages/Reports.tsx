@@ -56,7 +56,7 @@ export default function Reports() {
     })), [periodTasks, clients, users, q]);
 
   // ---------- TEAM ----------
-  const teamRows = useMemo(() => users.filter(u => u.role === "employee").map(u => {
+  const teamRows = useMemo(() => users.filter(u => u.role !== "leader" && u.role !== "commercial").map(u => {
     const sec = periodEntries.filter(e => e.user_id === u.id).reduce((s,e) => s+e.seconds, 0);
     const ts = periodTasks.filter(t => t.assignee_id === u.id);
     const done = ts.filter(t => t.status === "done").length;
@@ -156,7 +156,7 @@ export default function Reports() {
         {[
           { id: "clients",   title: "Clientes",   subtitle: `${clients.length} cliente(s)`,                           icon: Building,   color: "text-primary" },
           { id: "tasks",     title: "Tarefas",    subtitle: `${tasks.length} tarefa(s) no total`,                     icon: ListTodo,   color: "text-accent" },
-          ...(isLeader ? [{ id: "team",      title: "Equipe",     subtitle: `${users.filter(u => u.role==="employee").length} funcionário(s)`, icon: UsersIcon, color: "text-warning" }] : []),
+          ...(isLeader ? [{ id: "team",      title: "Equipe",     subtitle: `${users.filter(u => u.role !== "leader" && u.role !== "commercial").length} funcionário(s)`, icon: UsersIcon, color: "text-warning" }] : []),
           ...(isLeader ? [{ id: "financial", title: "Financeiro", subtitle: "Receitas, despesas e folha",            icon: Wallet,    color: "text-success" }] : []),
         ].map(card => {
           const Icon = card.icon;

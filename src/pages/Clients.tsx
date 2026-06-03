@@ -80,7 +80,7 @@ export default function Clients() {
         actions={
           <>
             <PeriodFilter value={period} onChange={setPeriod} />
-            <Button onClick={() => setOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo cliente</Button>
+            {isLeader && <Button onClick={() => setOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo cliente</Button>}
           </>
         }
       />

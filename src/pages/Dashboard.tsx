@@ -66,7 +66,7 @@ export default function Dashboard() {
     return { dia: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), horas: +(sec/3600).toFixed(1), concluidas: dn };
   }), [timeEntries, inRange, isLeader, currentUser.id]);
 
-  const byUser = useMemo(() => users.filter(u => u.role === "employee").map(u => {
+  const byUser = useMemo(() => users.filter(u => u.role !== "leader" && u.role !== "commercial").map(u => {
     const ut = inRange.filter(t => t.assignee_id === u.id);
     return {
       name: u.name.split(" ")[0],
@@ -85,7 +85,7 @@ export default function Dashboard() {
 
   // Top performer (líder)
   const topPerformer = useMemo(() => {
-    const ranked = users.filter(u => u.role === "employee").map(u => {
+    const ranked = users.filter(u => u.role !== "leader" && u.role !== "commercial").map(u => {
       const sec = timeEntries.filter(e => e.user_id === u.id && inPeriod(e.logged_at, period))
         .reduce((s,e) => s+e.seconds, 0);
       const dn = inRange.filter(t => t.assignee_id === u.id && t.status === "done").length;

@@ -66,7 +66,6 @@ export default function Leads() {
   });
 
   const isLeader = user?.role === "leader";
-  const isManager = user?.is_manager;
   
   useEffect(() => {
     loadLeads();
@@ -78,8 +77,8 @@ export default function Leads() {
     try {
       const query = supabase.from("leads").select("*");
       
-      // If not leader/manager, only show owned leads
-      if (!isLeader && !isManager) {
+      // Apenas líder inicia com visão geral; demais perfis veem os próprios leads.
+      if (!isLeader) {
         query.eq("owner_id", user?.id);
       }
       
@@ -229,7 +228,7 @@ export default function Leads() {
         <div className="space-y-3">
           {filteredLeads.map(lead => {
             const owner = users.find(u => u.id === lead.owner_id);
-            const can_edit = isLeader || isManager || lead.owner_id === user?.id;
+            const can_edit = isLeader || lead.owner_id === user?.id;
             return (
               <Card key={lead.id} className="p-4 hover:bg-muted/50 transition">
                 <div className="flex items-start justify-between gap-4">
