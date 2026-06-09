@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Building2, Mail, Phone, Calendar, DollarSign, Clock, Star, Save, Heart, FileDown, AlertTriangle, CheckCircle2, Sparkles, Edit3, Plus, Trash2 } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 import type { Client } from "@/types";
@@ -48,7 +49,7 @@ const healthMap = {
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { clients, tasks, users, timeEntries, currentUser, updateClient, setClientSatisfaction } = useApp();
+  const { clients, tasks, users, timeEntries, currentUser, updateClient, setClientSatisfaction, deleteClient } = useApp();
   const client = clients.find(c => c.id === id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
@@ -214,6 +215,32 @@ export default function ClientDetail() {
             <Button variant="outline" onClick={exportPdf} className="gap-2"><FileDown className="w-4 h-4" /> Exportar PDF</Button>
             {isLeader && !editing && <Button onClick={startEdit} className="gap-2"><Edit3 className="w-4 h-4" /> Editar dados</Button>}
             {isLeader && editing && <Button onClick={saveEdit} className="gap-2"><Save className="w-4 h-4" /> Salvar</Button>}
+            {isLeader && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="gap-2">
+                    <Trash2 className="w-4 h-4" /> Excluir cliente
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir cliente "{client.name}"?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta ação é permanente. O cliente e todos os dados associados serão removidos e não poderão ser recuperados.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={async () => { await deleteClient(client.id); navigate("/clients"); }}
+                    >
+                      Sim, excluir cliente
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         </div>
       </Card>

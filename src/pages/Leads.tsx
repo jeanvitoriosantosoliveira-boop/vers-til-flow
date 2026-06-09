@@ -107,7 +107,7 @@ export default function Leads() {
 
   const filteredLeads = useMemo(() => 
     leads.filter(l => 
-      l.name.toLowerCase().includes(search.toLowerCase()) ||
+      (l.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (l.company?.toLowerCase().includes(search.toLowerCase())) ||
       (l.email?.toLowerCase().includes(search.toLowerCase()))
     ),
@@ -139,13 +139,12 @@ export default function Leads() {
   }
 
   async function save() {
-    if (!form.name?.trim()) return toast.error("Nome do lead é obrigatório");
     if (!form.stage_id) return toast.error("Estágio é obrigatório");
     if (!form.owner_id && !editingId) return toast.error("Comercial responsável é obrigatório");
 
     try {
       const payload = {
-        name: form.name.trim(),
+        name: form.name?.trim() || form.company?.trim() || form.email?.trim() || "Lead sem nome",
         company: form.company?.trim() || null,
         email: form.email?.trim() || null,
         phone: form.phone?.trim() || null,
@@ -234,7 +233,7 @@ export default function Leads() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-lg">{lead.name}</h3>
+                      <h3 className="font-semibold text-lg">{lead.name || lead.company || lead.email || "Lead sem nome"}</h3>
                       <Badge style={{ backgroundColor: getStageColor(lead.stage_id), color: "white" }}>
                         {getStageName(lead.stage_id)}
                       </Badge>
@@ -309,18 +308,18 @@ export default function Leads() {
       )}
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar Lead" : "Novo Lead"}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-1">
             <div>
-              <Label>Nome *</Label>
+              <Label>Nome</Label>
               <Input
                 value={form.name || ""}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Nome do lead"
+                placeholder="Nome do lead (opcional)"
               />
             </div>
 

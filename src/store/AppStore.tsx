@@ -31,7 +31,8 @@ interface AppState {
   deleteTask: (id: string) => Promise<void>;
   createClient: (c: Partial<Client>) => Promise<void>;
   updateClient: (id: string, patch: Partial<Client>) => Promise<void>;
-  setClientSatisfaction: (id: string, value: number, note?: string) => void;
+  deleteClient: (id: string) => Promise<void>;
+  setClientSatisfaction: (id: string, value: number, note?: string) => Promise<void>;
   addComment: (taskId: string, body: string) => Promise<void>;
   logTime: (input: { task_id: string; seconds: number; description?: string; logged_at?: string }) => Promise<void>;
   deleteTimeEntry: (id: string) => Promise<void>;
@@ -573,6 +574,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     if (usingBackend && supabase) await supabase.from("clients").update(clientToDb(patch)).eq("id", id);
   }, [usingBackend]);
 
+  const deleteClient = useCallback(async (id: string) => {
+    setClients((prev) => prev.filter((c) => c.id !== id));
+    if (usingBackend && supabase) await supabase.from("clients").delete().eq("id", id);
+    toast.success("Cliente excluído");
+  }, [usingBackend]);
+
   const addComment = useCallback(async (taskId: string, body: string) => {
     const c: Comment = { id: uid(), task_id: taskId, user_id: currentUser.id, body, created_at: new Date().toISOString() };
     setComments((prev) => [...prev, c]);
@@ -762,7 +769,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     if (usingBackend && supabase) void supabase.from("team_members").delete().eq("team_id", teamId).eq("user_id", userId);
   }, [usingBackend]);
 
-  const setClientSatisfaction = useCallback((id: string, value: number, note?: string) => {
+  const setClientSatisfaction = useCallback(async (id: string, value: number, note?: string) => {
     const monthKey = new Date().toISOString().slice(0,7);
     setClients(prev => prev.map(c => {
       if (c.id !== id) return c;
@@ -770,7 +777,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       return { ...c, satisfaction: value, satisfaction_history: [...hist, { month: monthKey, value, note }].sort((a,b) => a.month.localeCompare(b.month)) };
     }));
     if (usingBackend && supabase) {
-      void supabase.from("clients").update({ satisfaction: value } as any).eq("id", id);
+      const { error } = await supabase.from("clients").update({ satisfaction: value } as any).eq("id", id);
+      if (error) { toast.error("Erro ao salvar satisfação: " + error.message); return; }
       void supabase.from("client_satisfaction_history").insert({ client_id: id, rating: value, recorded_by: currentUser.id } as any);
     }
     toast.success("Satisfação atualizada", { description: `${value.toFixed(1)} / 5` });
@@ -860,7 +868,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
     columns, expenses, extraServices, teamNotes, financeSettings, teams, cashAdjustments,
-    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, setClientSatisfaction,
+    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, deleteClient, setClientSatisfaction,
     addComment, logTime, deleteTimeEntry,
     createColumn, renameColumn, deleteColumn,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
