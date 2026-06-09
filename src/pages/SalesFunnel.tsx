@@ -121,9 +121,15 @@ export default function SalesFunnel() {
   const [newActivity, setNewActivity] = useState<{ kind: string; body: string }>({ kind: "note", body: "" });
 
   async function createLead() {
-    if (!form.name?.trim()) return toast.error("Nome obrigatório");
     const firstStage = stages.find(s => !s.is_won && !s.is_lost) ?? stages[0];
-    const payload = { ...form, stage_id: form.stage_id || firstStage?.id, owner_id: form.owner_id || user?.id, estimated_value: Number(form.estimated_value || 0), time_spent_seconds: Number(form.time_spent_seconds || 0) } as any;
+    const payload = {
+      ...form,
+      name: form.name?.trim() || form.company?.trim() || form.email?.trim() || "Lead sem nome",
+      stage_id: form.stage_id || firstStage?.id,
+      owner_id: form.owner_id || user?.id,
+      estimated_value: Number(form.estimated_value || 0),
+      time_spent_seconds: Number(form.time_spent_seconds || 0),
+    } as any;
     const { error } = await supabase.from("leads").insert(payload);
     if (error) return toast.error(error.message);
     toast.success("Lead criado");
@@ -212,7 +218,7 @@ export default function SalesFunnel() {
             <DialogContent className="max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden">
               <DialogHeader><DialogTitle>Novo lead</DialogTitle></DialogHeader>
               <div className="grid gap-3 overflow-y-auto flex-1 pr-1 py-1">
-                <div><Label>Nome*</Label><Input value={form.name ?? ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+                <div><Label>Nome</Label><Input value={form.name ?? ""} placeholder="Nome do lead (opcional)" onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
                 <div><Label>Empresa</Label><Input value={form.company ?? ""} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
                 <div><Label>Nicho / Segmento</Label><Input value={form.niche ?? ""} onChange={e => setForm(f => ({ ...f, niche: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-2">
