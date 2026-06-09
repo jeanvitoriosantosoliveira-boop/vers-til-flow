@@ -59,7 +59,7 @@ export default function Login() {
             </Button>
           </form>
         </Card>
-        <p className="text-[10px] text-muted-foreground/60 text-center mt-6">por JVS Soluções</p>
+        <p className="text-[10px] text-muted-foreground/60 text-center mt-6">por JVS Soluções & Versátil Digital</p>
       </div>
     </div>
   );

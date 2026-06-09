@@ -95,7 +95,7 @@ export function AppLayout() {
             <Database className="w-3 h-3" />
             {usingBackend ? <span className="text-success">Conectado ao banco</span> : <span>Modo demo (mock)</span>}
           </div>
-          <p className="text-[10px] text-muted-foreground/60 px-2 mt-2">por JVS Soluções</p>
+          <p className="text-[10px] text-muted-foreground/60 px-2 mt-2">por JVS Soluções & Versátil Digital</p>
         </div>
     </>
   );
