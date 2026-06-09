@@ -234,7 +234,7 @@ export default function ClientDetail() {
                     <AlertDialogAction
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       onClick={() => {
-                        deleteClient(client.id).then(() => navigate("/clients"));
+                        deleteClient(client.id).then(() => { window.location.href = "/clients"; });
                       }}
                     >
                       Sim, excluir cliente
