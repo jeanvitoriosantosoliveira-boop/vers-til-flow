@@ -308,12 +308,12 @@ export default function Leads() {
       )}
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar Lead" : "Novo Lead"}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-1 py-1">
             <div>
               <Label>Nome</Label>
               <Input

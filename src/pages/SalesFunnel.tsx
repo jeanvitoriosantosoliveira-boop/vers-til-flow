@@ -209,9 +209,9 @@ export default function SalesFunnel() {
           {isLeader && <Button variant="outline" onClick={() => setStageForm({ color: "#6366f1", position: stages.length })} className="gap-2"><Plus className="w-4 h-4" /> Nova etapa</Button>}
           <Dialog open={openNew} onOpenChange={setOpenNew}>
             <DialogTrigger asChild><Button className="gap-2"><Plus className="w-4 h-4" /> Novo lead</Button></DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden">
               <DialogHeader><DialogTitle>Novo lead</DialogTitle></DialogHeader>
-              <div className="grid gap-3">
+              <div className="grid gap-3 overflow-y-auto flex-1 pr-1 py-1">
                 <div><Label>Nome*</Label><Input value={form.name ?? ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
                 <div><Label>Empresa</Label><Input value={form.company ?? ""} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
                 <div><Label>Nicho / Segmento</Label><Input value={form.niche ?? ""} onChange={e => setForm(f => ({ ...f, niche: e.target.value }))} /></div>
