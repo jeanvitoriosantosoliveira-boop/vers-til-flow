@@ -233,7 +233,9 @@ export default function ClientDetail() {
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
                     <AlertDialogAction
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={async () => { await deleteClient(client.id); navigate("/clients"); }}
+                      onClick={() => {
+                        deleteClient(client.id).then(() => navigate("/clients"));
+                      }}
                     >
                       Sim, excluir cliente
                     </AlertDialogAction>
