@@ -12,6 +12,7 @@ export default function Team() {
   const navigate = useNavigate();
   if (currentUser.role !== "leader" && currentUser.role !== "manager") return <Navigate to="/" replace />;
 
+  // Mostra todos os colaboradores (não líderes, não comerciais) para qualquer perfil com acesso
   const team = useMemo(() => users.filter(u => u.role !== "leader" && u.role !== "commercial").map(u => {
     const t = tasks.filter(x => x.assignee_id === u.id);
     const done = t.filter(x => x.status === "done").length;

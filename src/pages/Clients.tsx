@@ -40,12 +40,8 @@ export default function Clients() {
   const isLeader = currentUser.role === "leader";
 
   const visible = useMemo(() => {
-    let list = currentUser.role === "leader"
-      ? clients
-      : (() => {
-          const myClientIds = new Set(tasks.filter(t => t.assignee_id === currentUser.id).map(t => t.client_id).filter(Boolean));
-          return clients.filter(c => myClientIds.has(c.id));
-        })();
+    // Todos os perfis veem todos os clientes
+    let list = clients;
 
     // Período: cliente criado no período OU com tarefas atualizadas no período
     if (period.preset !== "all") {
@@ -64,7 +60,7 @@ export default function Clients() {
       );
     }
     return list;
-  }, [clients, tasks, currentUser, period, query]);
+  }, [clients, tasks, period, query]);
 
   function tasksInPeriodFor(clientId: string) {
     const all = tasks.filter(t => t.client_id === clientId);
@@ -76,7 +72,7 @@ export default function Clients() {
     <div className="max-w-7xl mx-auto">
       <PageHeader
         title="Clientes"
-        subtitle={`${visible.length} cliente${visible.length === 1 ? "" : "s"} ${currentUser.role === "leader" ? "ativos" : "vinculados a você"}`}
+        subtitle={`${visible.length} cliente${visible.length === 1 ? "" : "s"} cadastrados`}
         actions={
           <>
             <PeriodFilter value={period} onChange={setPeriod} />

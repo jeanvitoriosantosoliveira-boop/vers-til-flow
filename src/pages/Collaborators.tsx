@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, UserPlus, Shield, Crown, Trash2 } from "lucide-react";
+import { Plus, UserPlus, Shield, Crown, Trash2, Pencil, Check, X } from "lucide-react";
 
 type Profile = {
   id: string; name: string; email: string; avatar_url: string | null;
@@ -20,6 +20,13 @@ type Profile = {
 type RoleRow = { user_id: string; role: "leader" | "manager" | "collaborator" | "commercial" };
 type Team = { id: string; name: string };
 
+const ROLE_LABELS: Record<string, string> = {
+  leader: "Líder",
+  manager: "Gerente",
+  commercial: "Comercial",
+  collaborator: "Colaborador",
+};
+
 export default function Collaborators() {
   const { user } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -27,6 +34,10 @@ export default function Collaborators() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  // Controle de edição de role inline
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [pendingRole, setPendingRole] = useState<"leader" | "manager" | "collaborator" | "commercial">("collaborator");
+  const [savingRole, setSavingRole] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -61,6 +72,33 @@ export default function Collaborators() {
     return "collaborator";
   }
 
+  function startEditRole(uid: string) {
+    setPendingRole(roleOf(uid));
+    setEditingRoleId(uid);
+  }
+
+  function cancelEditRole() {
+    setEditingRoleId(null);
+  }
+
+  async function saveRole(uid: string) {
+    setSavingRole(true);
+    try {
+      // Remove todas as roles existentes do usuário e insere a nova
+      const { error: delErr } = await supabase.from("user_roles").delete().eq("user_id", uid);
+      if (delErr) throw delErr;
+      const { error: insErr } = await supabase.from("user_roles").insert({ user_id: uid, role: pendingRole } as any);
+      if (insErr) throw insErr;
+      toast.success(`Nível alterado para ${ROLE_LABELS[pendingRole]}`);
+      setEditingRoleId(null);
+      load();
+    } catch (err: any) {
+      toast.error(err.message ?? "Erro ao alterar nível");
+    } finally {
+      setSavingRole(false);
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -92,24 +130,72 @@ export default function Collaborators() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {profiles.map(p => {
             const r = roleOf(p.id);
+            const isEditing = editingRoleId === p.id;
             return (
               <Card key={p.id} className="p-4 flex items-start gap-3">
-                <Avatar className="w-12 h-12">
+                <Avatar className="w-12 h-12 shrink-0">
                   <AvatarImage src={p.avatar_url ?? undefined} />
                   <AvatarFallback>{p.name.slice(0, 2).toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold truncate">{p.name}</p>
-                    {r === "leader" && <Badge variant="default" className="gap-1"><Crown className="w-3 h-3" />Líder</Badge>}
-                    {r === "manager" && <Badge variant="secondary" className="gap-1"><Shield className="w-3 h-3" />Gerente</Badge>}
-                    {r === "collaborator" && <Badge variant="outline">Colaborador</Badge>}
-                    {r === "commercial" && <Badge variant="outline" className="border-accent/40 text-accent">Comercial</Badge>}
+                    {!isEditing && (
+                      <>
+                        {r === "leader"       && <Badge variant="default"  className="gap-1"><Crown className="w-3 h-3" />Líder</Badge>}
+                        {r === "manager"      && <Badge variant="secondary" className="gap-1"><Shield className="w-3 h-3" />Gerente</Badge>}
+                        {r === "collaborator" && <Badge variant="outline">Colaborador</Badge>}
+                        {r === "commercial"   && <Badge variant="outline" className="border-accent/40 text-accent">Comercial</Badge>}
+                        {isLeader && p.id !== user?.id && (
+                          <button
+                            onClick={() => startEditRole(p.id)}
+                            className="text-muted-foreground hover:text-accent transition-colors"
+                            title="Alterar nível"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">{p.position ?? "—"}</p>
+
+                  {/* Editor inline de role */}
+                  {isEditing && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <Select value={pendingRole} onValueChange={v => setPendingRole(v as any)} disabled={savingRole}>
+                        <SelectTrigger className="h-7 text-xs w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="collaborator">Colaborador</SelectItem>
+                          <SelectItem value="commercial">Comercial</SelectItem>
+                          <SelectItem value="manager">Gerente</SelectItem>
+                          <SelectItem value="leader">Líder</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <button
+                        onClick={() => saveRole(p.id)}
+                        disabled={savingRole}
+                        className="text-success hover:text-success/80 transition-colors disabled:opacity-50"
+                        title="Confirmar"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={cancelEditRole}
+                        disabled={savingRole}
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                        title="Cancelar"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{p.position ?? "—"}</p>
                   <p className="text-xs text-muted-foreground truncate">{p.email}</p>
                 </div>
-                {isLeader && p.id !== user?.id && (
+                {isLeader && p.id !== user?.id && !isEditing && (
                   <Button size="icon" variant="ghost" onClick={() => removeCollaborator(p.id, p.name)} title="Remover">
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>

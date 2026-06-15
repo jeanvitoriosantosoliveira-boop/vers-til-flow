@@ -392,8 +392,12 @@ export default function Leads() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Próprio usuário logado sempre disponível */}
+                    {user && !users.filter(u => u.role === "commercial").find(u => u.id === user.id) && (
+                      <SelectItem value={user.id}>{user.name} (eu)</SelectItem>
+                    )}
                     {users.filter(u => u.role === "commercial").map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                      <SelectItem key={u.id} value={u.id}>{u.id === user?.id ? `${u.name} (eu)` : u.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

@@ -235,7 +235,15 @@ export default function SalesFunnel() {
                   <div><Label>Comercial responsável</Label>
                     <Select value={form.owner_id ?? user?.id ?? ""} onValueChange={v => setForm(f => ({ ...f, owner_id: v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{commercialUsers.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
+                      <SelectContent>
+                        {/* Próprio usuário logado sempre disponível */}
+                        {user && !commercialUsers.find(u => u.id === user.id) && (
+                          <SelectItem value={user.id}>{user.name} (eu)</SelectItem>
+                        )}
+                        {commercialUsers.map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.id === user?.id ? `${u.name} (eu)` : u.name}</SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
                 </div>
