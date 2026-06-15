@@ -288,12 +288,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { push: pushNotif } = useNotifications();
 
   const [users, setUsers] = useState<User[]>(() => loadLS<User[]>(LS.users, mockUsers));
-  const [clients, setClients] = useState<Client[]>(() => loadLS<Client[]>(LS.clients, mockClients));
-  const [tasks, setTasks] = useState<Task[]>(() => loadLS<Task[]>(LS.tasks, mockTasks));
-  const [comments, setComments] = useState<Comment[]>(mockComments);
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(mockTimeEntries);
+  const [clients, setClients] = useState<Client[]>(() => isSupabaseConfigured ? [] : loadLS<Client[]>(LS.clients, mockClients));
+  const [tasks, setTasks] = useState<Task[]>(() => isSupabaseConfigured ? [] : loadLS<Task[]>(LS.tasks, mockTasks));
+  const [comments, setComments] = useState<Comment[]>(isSupabaseConfigured ? [] : mockComments);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(isSupabaseConfigured ? [] : mockTimeEntries);
   const [usingBackend, setUsingBackend] = useState(false);
   const [ready, setReady] = useState(false);
+
+  // Limpa LS antigo de tasks/clients quando Supabase está configurado
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      localStorage.removeItem(LS.tasks);
+      localStorage.removeItem(LS.clients);
+    }
+  }, []);
 
   const [columns, setColumns] = useState<KanbanColumn[]>(() => loadLS<KanbanColumn[]>(LS.columns, DEFAULT_COLUMNS));
   const [expenses, setExpenses] = useState<Expense[]>(() => loadLS<Expense[]>(LS.expenses, mockExpenses));
@@ -313,8 +321,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => saveLS(LS.users, users), [users]);
   useEffect(() => saveLS(LS.teams, teams), [teams]);
   useEffect(() => saveLS(LS.cash, cashAdjustments), [cashAdjustments]);
-  useEffect(() => saveLS(LS.clients, clients), [clients]);
-  useEffect(() => saveLS(LS.tasks, tasks), [tasks]);
+  // Só persiste tasks/clients no LS quando não tem Supabase (modo demo)
+  useEffect(() => { if (!isSupabaseConfigured) saveLS(LS.clients, clients); }, [clients]);
+  useEffect(() => { if (!isSupabaseConfigured) saveLS(LS.tasks, tasks); }, [tasks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -474,8 +483,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       column_id: data.column_id ?? null,
       recurrence: data.recurrence ?? { mode: "none" },
     };
-    setTasks((prev) => [newTask, ...prev]);
-    if (usingBackend && supabase) await supabase.from("tasks").insert(taskToDb(newTask));
+    if (isSupabaseConfigured && supabase) {
+      const { data: inserted, error } = await supabase.from("tasks").insert(taskToDb(newTask)).select().single();
+      if (error) { toast.error("Erro ao criar tarefa: " + error.message); return; }
+      setTasks((prev) => [mapTask(inserted), ...prev]);
+    } else {
+      setTasks((prev) => [newTask, ...prev]);
+    }
     const assignee = users.find(u => u.id === newTask.assignee_id);
     await notifyUser({
       type: "task_created",
@@ -492,8 +506,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       if (t.id === id) { prevTask = t; return { ...t, ...patch, updated_at: new Date().toISOString() }; }
       return t;
     }));
-    if (usingBackend && supabase) {
-      await supabase.from("tasks").update(taskToDb({ ...patch, updated_at: new Date().toISOString() })).eq("id", id);
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from("tasks").update(taskToDb({ ...patch, updated_at: new Date().toISOString() })).eq("id", id);
+      if (error) toast.error("Erro ao atualizar tarefa: " + error.message);
     }
     if (prevTask) {
       const isStatus = patch.status && patch.status !== prevTask.status;
@@ -543,7 +558,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const deleteTask = useCallback(async (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    if (usingBackend && supabase) await supabase.from("tasks").delete().eq("id", id);
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from("tasks").delete().eq("id", id);
+      if (error) toast.error("Erro ao excluir tarefa: " + error.message);
+    }
   }, [usingBackend]);
 
   const createClient = useCallback(async (data: Partial<Client>) => {
@@ -583,8 +601,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const addComment = useCallback(async (taskId: string, body: string) => {
     const c: Comment = { id: uid(), task_id: taskId, user_id: currentUser.id, body, created_at: new Date().toISOString() };
     setComments((prev) => [...prev, c]);
-    if (usingBackend && supabase) await supabase.from("comments").insert(c as any);
-  }, [currentUser, usingBackend]);
+    if (isSupabaseConfigured && supabase) await supabase.from("comments").insert(c as any);
+  }, [currentUser]);
 
   const logTime = useCallback(async ({ task_id, seconds, description, logged_at }: { task_id: string; seconds: number; description?: string; logged_at?: string }) => {
     if (seconds <= 0) return;
@@ -597,24 +615,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     setTimeEntries((prev) => [entry, ...prev]);
     setTasks((prev) => prev.map((t) => t.id === task_id ? { ...t, total_seconds: t.total_seconds + seconds } : t));
-    if (usingBackend && supabase) {
+    if (isSupabaseConfigured && supabase) {
       await supabase.from("time_entries").insert(timeEntryToDb(entry));
       if (task) await supabase.from("tasks").update({ total_seconds: task.total_seconds + seconds } as any).eq("id", task_id);
     }
     toast.success("Horas lançadas", { description: `${(seconds/3600).toFixed(2)}h registradas` });
-  }, [currentUser, tasks, usingBackend]);
+  }, [currentUser, tasks]);
 
   const deleteTimeEntry = useCallback(async (id: string) => {
     const entry = timeEntries.find(t => t.id === id);
     if (!entry) return;
     setTimeEntries((prev) => prev.filter(t => t.id !== id));
     setTasks((prev) => prev.map((t) => t.id === entry.task_id ? { ...t, total_seconds: Math.max(0, t.total_seconds - entry.seconds) } : t));
-    if (usingBackend && supabase) {
+    if (isSupabaseConfigured && supabase) {
       await supabase.from("time_entries").delete().eq("id", id);
       const task = tasks.find((t) => t.id === entry.task_id);
       if (task) await supabase.from("tasks").update({ total_seconds: Math.max(0, task.total_seconds - entry.seconds) } as any).eq("id", entry.task_id);
     }
-  }, [tasks, timeEntries, usingBackend]);
+  }, [tasks, timeEntries]);
 
   // ---------- Colunas dinâmicas (líder) ----------
   const createColumn = useCallback((title: string) => {
