@@ -473,7 +473,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       recurrence: data.recurrence ?? { mode: "none" },
     };
     const { data: inserted, error } = await db.from("tasks").insert(taskToDb(newTask)).select().single();
-    if (error) { toast.error("Erro ao criar tarefa: " + error.message); return; }
+    if (error) {
+      toast.error("Erro ao criar tarefa: " + error.message);
+      throw error;
+    }
     setTasks((prev) => [mapTask(inserted), ...prev]);
     const assignee = users.find(u => u.id === newTask.assignee_id);
     await notifyUser({
@@ -487,12 +490,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
     let prevTask: Task | undefined;
+    const updatedAt = new Date().toISOString();
     setTasks((prev) => prev.map((t) => {
-      if (t.id === id) { prevTask = t; return { ...t, ...patch, updated_at: new Date().toISOString() }; }
+      if (t.id === id) { prevTask = t; return { ...t, ...patch, updated_at: updatedAt }; }
       return t;
     }));
-    const { error } = await db.from("tasks").update(taskToDb({ ...patch, updated_at: new Date().toISOString() })).eq("id", id);
-    if (error) toast.error("Erro ao atualizar tarefa: " + error.message);
+    const { data: savedTask, error } = await db
+      .from("tasks")
+      .update(taskToDb({ ...patch, updated_at: updatedAt }))
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+    if (error) {
+      if (prevTask) setTasks((prev) => prev.map((t) => t.id === id ? prevTask! : t));
+      toast.error("Erro ao atualizar tarefa: " + error.message);
+      throw error;
+    }
+    if (savedTask) setTasks((prev) => prev.map((t) => t.id === id ? mapTask(savedTask) : t));
     if (prevTask) {
       const isStatus = patch.status && patch.status !== prevTask.status;
       void notifyUser({
@@ -531,7 +545,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  }, [usingBackend, notifyUser]);
+  }, [notifyUser]);
 
   const moveTask = useCallback(
     (id: string, target: { status?: TaskStatus; column_id?: string | null }) =>
@@ -540,10 +554,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteTask = useCallback(async (id: string) => {
+    const previous = tasks.find((t) => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
     const { error } = await db.from("tasks").delete().eq("id", id);
-    if (error) toast.error("Erro ao excluir tarefa: " + error.message);
-  }, []);
+    if (error) {
+      if (previous) setTasks((prev) => [previous, ...prev]);
+      toast.error("Erro ao excluir tarefa: " + error.message);
+      throw error;
+    }
+  }, [tasks]);
 
   const createClient = useCallback(async (data: Partial<Client>) => {
     const c: Client = {

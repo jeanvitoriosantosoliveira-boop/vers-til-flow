@@ -42,6 +42,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
   async function save() {
     if (!form.title?.trim()) return;
+    setSaving(true);
 
     // Campos seguros para enviar ao banco — exclui campos imutáveis
     const patch: Partial<Task> = {
@@ -57,12 +58,16 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
       is_template: (form.recurrence && form.recurrence.mode !== "none") ? true : false,
     };
 
-    if (editing) {
-      await updateTask(editing.id, patch);
-    } else {
-      await createTask(patch);
+    try {
+      if (editing) {
+        await updateTask(editing.id, patch);
+      } else {
+        await createTask(patch);
+      }
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
     }
-    onOpenChange(false);
   }
 
   async function submitTimeLog() {
@@ -312,12 +317,12 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
         <DialogFooter className="gap-2">
           {editing && (currentUser.role === "leader" || currentUser.role === "manager" || editing.assignee_id === currentUser.id || editing.created_by === currentUser.id) && (
-            <Button variant="outline" onClick={async () => { await deleteTask(editing.id); onOpenChange(false); }} className="mr-auto gap-2 text-destructive hover:text-destructive">
+            <Button variant="outline" onClick={async () => { setSaving(true); try { await deleteTask(editing.id); onOpenChange(false); } finally { setSaving(false); } }} className="mr-auto gap-2 text-destructive hover:text-destructive" disabled={saving}>
               <Trash2 className="w-3 h-3" /> Excluir
             </Button>
           )}
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={save}>{editing ? "Salvar" : "Criar tarefa"}</Button>
+          <Button onClick={save} disabled={saving}>{saving ? "Salvando..." : editing ? "Salvar" : "Criar tarefa"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
