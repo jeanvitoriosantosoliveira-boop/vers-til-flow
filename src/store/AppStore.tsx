@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { supabase as _supabase } from "@/integrations/supabase/client";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { mockClients, mockComments, mockTasks, mockTimeEntries, mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
+import { mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
 import type {
   Client, Comment, Task, TaskStatus, TimeEntry, User, Role,
   KanbanColumn, Expense, ExtraService, TeamNote, FinanceSettings, Team, CashAdjustment
@@ -8,6 +9,9 @@ import type {
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationsContext";
 import { toast } from "sonner";
+
+// Sempre usa o cliente direto — nunca null
+const db = _supabase;
 
 interface AppState {
   ready: boolean;
@@ -288,10 +292,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { push: pushNotif } = useNotifications();
 
   const [users, setUsers] = useState<User[]>(() => loadLS<User[]>(LS.users, mockUsers));
-  const [clients, setClients] = useState<Client[]>(() => isSupabaseConfigured ? [] : loadLS<Client[]>(LS.clients, mockClients));
-  const [tasks, setTasks] = useState<Task[]>(() => isSupabaseConfigured ? [] : loadLS<Task[]>(LS.tasks, mockTasks));
-  const [comments, setComments] = useState<Comment[]>(isSupabaseConfigured ? [] : mockComments);
-  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(isSupabaseConfigured ? [] : mockTimeEntries);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [usingBackend, setUsingBackend] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -326,89 +330,71 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!isSupabaseConfigured) saveLS(LS.tasks, tasks); }, [tasks]);
 
   useEffect(() => {
+    // Só carrega quando há usuário autenticado
+    if (!user?.id) {
+      setReady(true);
+      return;
+    }
     let cancelled = false;
     (async () => {
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const [
-            profilesRes,
-            rolesRes,
-            teamsRes,
-            membersRes,
-            clientsRes,
-            tasksRes,
-            commentsRes,
-            timeRes,
-            columnsRes,
-            expensesRes,
-            extraServicesRes,
-            teamNotesRes,
-            cashRes,
-            financeRes,
-          ] = await Promise.all([
-            supabase.from("profiles").select("*").order("name"),
-            supabase.from("user_roles").select("user_id,role"),
-            supabase.from("teams").select("*").order("name"),
-            supabase.from("team_members").select("*"),
-            supabase.from("clients").select("*").order("created_at", { ascending: false }),
-            supabase.from("tasks").select("*").order("created_at", { ascending: false }),
-            supabase.from("comments").select("*").order("created_at"),
-            supabase.from("time_entries").select("*").order("started_at", { ascending: false }),
-            supabase.from("kanban_columns").select("*").order("order"),
-            supabase.from("expenses").select("*").order("occurred_on", { ascending: false }),
-            supabase.from("extra_services").select("*").order("occurred_on", { ascending: false }),
-            supabase.from("team_notes").select("*").order("created_at", { ascending: false }),
-            supabase.from("cash_adjustments").select("*").order("occurred_on", { ascending: false }),
-            supabase.from("finance_settings").select("*"),
-          ]);
-          if (cancelled) return;
-          const responses = [
-            profilesRes, rolesRes, teamsRes, membersRes, clientsRes, tasksRes, commentsRes,
-            timeRes, columnsRes, expensesRes, extraServicesRes, teamNotesRes, cashRes, financeRes,
-          ];
-          responses.forEach((res: any) => {
-            if (res.error) console.warn("Falha ao carregar dados do Supabase", res.error);
-          });
+      try {
+        const [
+          profilesRes, rolesRes, teamsRes, membersRes, clientsRes, tasksRes,
+          commentsRes, timeRes, columnsRes, expensesRes, extraServicesRes,
+          teamNotesRes, cashRes, financeRes,
+        ] = await Promise.all([
+          db.from("profiles").select("*").order("name"),
+          db.from("user_roles").select("user_id,role"),
+          db.from("teams").select("*").order("name"),
+          db.from("team_members").select("*"),
+          db.from("clients").select("*").order("created_at", { ascending: false }),
+          db.from("tasks").select("*").order("created_at", { ascending: false }),
+          db.from("comments").select("*").order("created_at"),
+          db.from("time_entries").select("*").order("started_at", { ascending: false }),
+          db.from("kanban_columns").select("*").order("order"),
+          db.from("expenses").select("*").order("occurred_on", { ascending: false }),
+          db.from("extra_services").select("*").order("occurred_on", { ascending: false }),
+          db.from("team_notes").select("*").order("created_at", { ascending: false }),
+          db.from("cash_adjustments").select("*").order("occurred_on", { ascending: false }),
+          db.from("finance_settings").select("*"),
+        ]);
+        if (cancelled) return;
 
-          const roles = rolesRes.data ?? [];
-          const members = membersRes.data ?? [];
-          if (!profilesRes.error && profilesRes.data) setUsers(profilesRes.data.map((p) => mapUser(p, roles, members)));
-          if (!teamsRes.error && teamsRes.data) setTeams(teamsRes.data.map((tm) => mapTeam(tm, members)));
-          if (!clientsRes.error && clientsRes.data) setClients(clientsRes.data.map(mapClient));
-          if (!tasksRes.error && tasksRes.data) setTasks(tasksRes.data.map(mapTask));
-          if (!commentsRes.error && commentsRes.data) setComments(commentsRes.data as Comment[]);
-          if (!timeRes.error && timeRes.data) setTimeEntries(timeRes.data.map(mapTimeEntry));
-          if (!columnsRes.error && columnsRes.data) setColumns(columnsRes.data.length ? columnsRes.data as KanbanColumn[] : DEFAULT_COLUMNS);
-          if (!expensesRes.error && expensesRes.data) setExpenses(expensesRes.data.map(mapExpense));
-          if (!extraServicesRes.error && extraServicesRes.data) setExtraServices(extraServicesRes.data.map(mapExtraService));
-          if (!teamNotesRes.error && teamNotesRes.data) setTeamNotes(teamNotesRes.data as TeamNote[]);
-          if (!cashRes.error && cashRes.data) setCashAdjustments(cashRes.data.map(mapCashAdjustment));
-          if (!financeRes.error && financeRes.data) {
-            const settings = financeRes.data.reduce((acc: FinanceSettings, row: any) => ({ ...acc, [row.key]: row.value }), {
-              opening_balance: 25000,
-              default_tax_rate: 32,
-              custom_categories: [],
-            });
-            setFinanceSettings(settings);
-          }
-          setUsingBackend(responses.some((res: any) => !res.error));
-        } catch (e) {
-          console.warn("Supabase falhou, usando mocks", e);
+        const roles = rolesRes.data ?? [];
+        const members = membersRes.data ?? [];
+        if (!profilesRes.error && profilesRes.data) setUsers(profilesRes.data.map((p) => mapUser(p, roles, members)));
+        if (!teamsRes.error && teamsRes.data) setTeams(teamsRes.data.map((tm) => mapTeam(tm, members)));
+        if (!clientsRes.error && clientsRes.data) setClients(clientsRes.data.map(mapClient));
+        if (!tasksRes.error && tasksRes.data) setTasks(tasksRes.data.map(mapTask));
+        if (!commentsRes.error && commentsRes.data) setComments(commentsRes.data as Comment[]);
+        if (!timeRes.error && timeRes.data) setTimeEntries(timeRes.data.map(mapTimeEntry));
+        if (!columnsRes.error && columnsRes.data) setColumns(columnsRes.data.length ? columnsRes.data as KanbanColumn[] : DEFAULT_COLUMNS);
+        if (!expensesRes.error && expensesRes.data) setExpenses(expensesRes.data.map(mapExpense));
+        if (!extraServicesRes.error && extraServicesRes.data) setExtraServices(extraServicesRes.data.map(mapExtraService));
+        if (!teamNotesRes.error && teamNotesRes.data) setTeamNotes(teamNotesRes.data as TeamNote[]);
+        if (!cashRes.error && cashRes.data) setCashAdjustments(cashRes.data.map(mapCashAdjustment));
+        if (!financeRes.error && financeRes.data) {
+          const settings = financeRes.data.reduce((acc: FinanceSettings, row: any) => ({ ...acc, [row.key]: row.value }), {
+            opening_balance: 25000, default_tax_rate: 32, custom_categories: [],
+          });
+          setFinanceSettings(settings);
         }
+        setUsingBackend(true);
+      } catch (e) {
+        console.warn("Falha ao carregar dados do Supabase:", e);
       }
       setReady(true);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (!usingBackend || !supabase) return;
-
+    if (!user?.id) return;
     const upsert = <T extends { id: string }>(items: T[], item: T) =>
       items.some((x) => x.id === item.id) ? items.map((x) => x.id === item.id ? item : x) : [item, ...items];
     const remove = <T extends { id: string }>(items: T[], id: string) => items.filter((x) => x.id !== id);
 
-    const channel = supabase
+    const channel = db
       .channel("app-store-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (payload) => {
         const row = payload.new ? mapTask(payload.new) : null;
@@ -435,8 +421,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [usingBackend]);
+    return () => { db.removeChannel(channel); };
+  }, [user?.id]);
 
   const authUserId = user?.id ?? users[0]?.id;
   const fromList = users.find(u => u.id === authUserId);
@@ -456,8 +442,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const notifyUser = useCallback(async (input: { type: "task_created" | "task_updated" | "task_done" | "info"; title: string; body?: string; user_id?: string | null }) => {
     if (!input.user_id) return;
     pushNotif({ ...input, user_id: input.user_id });
-    if (usingBackend && supabase) {
-      await supabase.from("notifications").insert({
+    if (true) {
+      await db.from("notifications").insert({
         user_id: input.user_id,
         type: input.type,
         title: input.title,
@@ -483,13 +469,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       column_id: data.column_id ?? null,
       recurrence: data.recurrence ?? { mode: "none" },
     };
-    if (isSupabaseConfigured && supabase) {
-      const { data: inserted, error } = await supabase.from("tasks").insert(taskToDb(newTask)).select().single();
-      if (error) { toast.error("Erro ao criar tarefa: " + error.message); return; }
-      setTasks((prev) => [mapTask(inserted), ...prev]);
-    } else {
-      setTasks((prev) => [newTask, ...prev]);
-    }
+    const { data: inserted, error } = await db.from("tasks").insert(taskToDb(newTask)).select().single();
+    if (error) { toast.error("Erro ao criar tarefa: " + error.message); return; }
+    setTasks((prev) => [mapTask(inserted), ...prev]);
     const assignee = users.find(u => u.id === newTask.assignee_id);
     await notifyUser({
       type: "task_created",
@@ -498,7 +480,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       user_id: newTask.assignee_id ?? undefined,
     });
     toast.success("Tarefa criada", { description: newTask.title });
-  }, [usingBackend, users, notifyUser, currentUser]);
+  }, [users, notifyUser, currentUser]);
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
     let prevTask: Task | undefined;
@@ -506,10 +488,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       if (t.id === id) { prevTask = t; return { ...t, ...patch, updated_at: new Date().toISOString() }; }
       return t;
     }));
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from("tasks").update(taskToDb({ ...patch, updated_at: new Date().toISOString() })).eq("id", id);
-      if (error) toast.error("Erro ao atualizar tarefa: " + error.message);
-    }
+    const { error } = await db.from("tasks").update(taskToDb({ ...patch, updated_at: new Date().toISOString() })).eq("id", id);
+    if (error) toast.error("Erro ao atualizar tarefa: " + error.message);
     if (prevTask) {
       const isStatus = patch.status && patch.status !== prevTask.status;
       void notifyUser({
@@ -558,11 +538,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const deleteTask = useCallback(async (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from("tasks").delete().eq("id", id);
-      if (error) toast.error("Erro ao excluir tarefa: " + error.message);
-    }
-  }, [usingBackend]);
+    const { error } = await db.from("tasks").delete().eq("id", id);
+    if (error) toast.error("Erro ao excluir tarefa: " + error.message);
+  }, []);
 
   const createClient = useCallback(async (data: Partial<Client>) => {
     const c: Client = {
@@ -583,25 +561,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setClients((prev) => [c, ...prev]);
-    if (usingBackend && supabase) await supabase.from("clients").insert(clientToDb(c));
+    await db.from("clients").insert(clientToDb(c));
     toast.success("Cliente criado", { description: c.name });
-  }, [usingBackend, pushNotif]);
+  }, [pushNotif]);
 
   const updateClient = useCallback(async (id: string, patch: Partial<Client>) => {
     setClients((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
-    if (usingBackend && supabase) await supabase.from("clients").update(clientToDb(patch)).eq("id", id);
-  }, [usingBackend]);
+    await db.from("clients").update(clientToDb(patch)).eq("id", id);
+  }, []);
 
   const deleteClient = useCallback(async (id: string) => {
     setClients((prev) => prev.filter((c) => c.id !== id));
-    if (usingBackend && supabase) await supabase.from("clients").delete().eq("id", id);
+    await db.from("clients").delete().eq("id", id);
     toast.success("Cliente excluído");
-  }, [usingBackend]);
+  }, []);
 
   const addComment = useCallback(async (taskId: string, body: string) => {
     const c: Comment = { id: uid(), task_id: taskId, user_id: currentUser.id, body, created_at: new Date().toISOString() };
     setComments((prev) => [...prev, c]);
-    if (isSupabaseConfigured && supabase) await supabase.from("comments").insert(c as any);
+    await db.from("comments").insert(c as any);
   }, [currentUser]);
 
   const logTime = useCallback(async ({ task_id, seconds, description, logged_at }: { task_id: string; seconds: number; description?: string; logged_at?: string }) => {
@@ -615,10 +593,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     setTimeEntries((prev) => [entry, ...prev]);
     setTasks((prev) => prev.map((t) => t.id === task_id ? { ...t, total_seconds: t.total_seconds + seconds } : t));
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from("time_entries").insert(timeEntryToDb(entry));
-      if (task) await supabase.from("tasks").update({ total_seconds: task.total_seconds + seconds } as any).eq("id", task_id);
-    }
+    await db.from("time_entries").insert(timeEntryToDb(entry));
+    if (task) await db.from("tasks").update({ total_seconds: task.total_seconds + seconds } as any).eq("id", task_id);
     toast.success("Horas lançadas", { description: `${(seconds/3600).toFixed(2)}h registradas` });
   }, [currentUser, tasks]);
 
@@ -627,11 +603,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     if (!entry) return;
     setTimeEntries((prev) => prev.filter(t => t.id !== id));
     setTasks((prev) => prev.map((t) => t.id === entry.task_id ? { ...t, total_seconds: Math.max(0, t.total_seconds - entry.seconds) } : t));
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from("time_entries").delete().eq("id", id);
-      const task = tasks.find((t) => t.id === entry.task_id);
-      if (task) await supabase.from("tasks").update({ total_seconds: Math.max(0, task.total_seconds - entry.seconds) } as any).eq("id", entry.task_id);
-    }
+    await db.from("time_entries").delete().eq("id", id);
+    const task = tasks.find((t) => t.id === entry.task_id);
+    if (task) await db.from("tasks").update({ total_seconds: Math.max(0, task.total_seconds - entry.seconds) } as any).eq("id", entry.task_id);
   }, [tasks, timeEntries]);
 
   // ---------- Colunas dinâmicas (líder) ----------
@@ -642,14 +616,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const accents = ["bg-accent","bg-primary","bg-warning","bg-success","bg-destructive"];
       const accent = accents[prev.length % accents.length];
       const column = { id, title, accent, order };
-      if (usingBackend && supabase) void supabase.from("kanban_columns").insert(column as any);
+      if (true) void db.from("kanban_columns").insert(column as any);
       return [...prev, column];
     });
     toast.success("Coluna criada", { description: title });
   }, [usingBackend]);
   const renameColumn = useCallback((id: string, title: string) => {
     setColumns(prev => prev.map(c => c.id === id ? { ...c, title } : c));
-    if (usingBackend && supabase) void supabase.from("kanban_columns").update({ title }).eq("id", id);
+    if (true) void db.from("kanban_columns").update({ title }).eq("id", id);
   }, [usingBackend]);
   const deleteColumn = useCallback((id: string) => {
     const col = columns.find(c => c.id === id);
@@ -657,9 +631,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setColumns(prev => prev.filter(c => c.id !== id));
     // Tarefas que pertenciam a essa coluna voltam para "todo"
     setTasks(prev => prev.map(t => t.column_id === id ? { ...t, column_id: null, status: "todo" } : t));
-    if (usingBackend && supabase) {
-      void supabase.from("tasks").update({ column_id: null, status: "todo" } as any).eq("column_id", id);
-      void supabase.from("kanban_columns").delete().eq("id", id);
+    if (true) {
+      void db.from("tasks").update({ column_id: null, status: "todo" } as any).eq("column_id", id);
+      void db.from("kanban_columns").delete().eq("id", id);
     }
     toast.success("Coluna removida");
   }, [columns, usingBackend]);
@@ -677,12 +651,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setExpenses(prev => [item, ...prev]);
-    if (usingBackend && supabase) void supabase.from("expenses").insert(expenseToDb(item, currentUser.id));
+    if (true) void db.from("expenses").insert(expenseToDb(item, currentUser.id));
     toast.success("Despesa lançada", { description: item.title });
   }, [currentUser, usingBackend]);
   const deleteExpense = useCallback((id: string) => {
     setExpenses(prev => prev.filter(e => e.id !== id));
-    if (usingBackend && supabase) void supabase.from("expenses").delete().eq("id", id);
+    if (true) void db.from("expenses").delete().eq("id", id);
   }, [usingBackend]);
 
   const createExtraService = useCallback((s: Partial<ExtraService>) => {
@@ -696,28 +670,28 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setExtraServices(prev => [item, ...prev]);
-    if (usingBackend && supabase) void supabase.from("extra_services").insert(extraServiceToDb(item, currentUser.id));
+    if (true) void db.from("extra_services").insert(extraServiceToDb(item, currentUser.id));
     toast.success("Serviço avulso lançado", { description: item.title });
   }, [currentUser, usingBackend]);
   const deleteExtraService = useCallback((id: string) => {
     setExtraServices(prev => prev.filter(s => s.id !== id));
-    if (usingBackend && supabase) void supabase.from("extra_services").delete().eq("id", id);
+    if (true) void db.from("extra_services").delete().eq("id", id);
   }, [usingBackend]);
 
   // ---------- Notas da equipe ----------
   const addTeamNote = useCallback((user_id: string, body: string) => {
     const n: TeamNote = { id: uid(), user_id, body, created_at: new Date().toISOString(), author_id: currentUser.id };
     setTeamNotes(prev => [n, ...prev]);
-    if (usingBackend && supabase) void supabase.from("team_notes").insert(n as any);
+    if (true) void db.from("team_notes").insert(n as any);
   }, [currentUser, usingBackend]);
   const deleteTeamNote = useCallback((id: string) => {
     setTeamNotes(prev => prev.filter(n => n.id !== id));
-    if (usingBackend && supabase) void supabase.from("team_notes").delete().eq("id", id);
+    if (true) void db.from("team_notes").delete().eq("id", id);
   }, [usingBackend]);
 
   const updateUser = useCallback((id: string, patch: Partial<User>) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u));
-    if (usingBackend && supabase) {
+    if (true) {
       const profilePatch = {
         name: patch.name,
         email: patch.email,
@@ -733,15 +707,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         city: patch.city,
         updated_at: new Date().toISOString(),
       };
-      void supabase.from("profiles").update(profilePatch as any).eq("id", id);
+      void db.from("profiles").update(profilePatch as any).eq("id", id);
     }
   }, [usingBackend]);
 
   const updateFinanceSettings = useCallback((patch: Partial<FinanceSettings>) => {
     setFinanceSettings(prev => ({ ...prev, ...patch }));
-    if (usingBackend && supabase) {
+    if (true) {
       Object.entries(patch).forEach(([key, value]) => {
-        void supabase.from("finance_settings").upsert({ key, value, updated_at: new Date().toISOString() } as any);
+        void db.from("finance_settings").upsert({ key, value, updated_at: new Date().toISOString() } as any);
       });
     }
   }, [usingBackend]);
@@ -757,24 +731,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setTeams(prev => [item, ...prev]);
-    if (usingBackend && supabase) void supabase.from("teams").insert(teamToDb(item));
+    if (true) void db.from("teams").insert(teamToDb(item));
     toast.success("Time criado", { description: item.name });
   }, [usingBackend]);
   const updateTeam = useCallback((id: string, patch: Partial<Team>) => {
     setTeams(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
-    if (usingBackend && supabase) void supabase.from("teams").update(teamToDb(patch)).eq("id", id);
+    if (true) void db.from("teams").update(teamToDb(patch)).eq("id", id);
   }, [usingBackend]);
   const deleteTeam = useCallback((id: string) => {
     setTeams(prev => prev.filter(t => t.id !== id));
     setUsers(prev => prev.map(u => u.team_id === id ? { ...u, team_id: null, is_manager: false } : u));
-    if (usingBackend && supabase) void supabase.from("teams").delete().eq("id", id);
+    if (true) void db.from("teams").delete().eq("id", id);
   }, [usingBackend]);
 
   const addUserToTeam = useCallback((userId: string, teamId: string) => {
     setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_ids: Array.from(new Set([...(t.member_ids ?? []), userId])) } : t));
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, team_ids: Array.from(new Set([...(u.team_ids ?? (u.team_id ? [u.team_id] : [])), teamId])), team_id: u.team_id ?? teamId } : u));
-    if (usingBackend && supabase) {
-      void supabase.from("team_members").insert({ team_id: teamId, user_id: userId, role_in_team: "member" } as any);
+    if (true) {
+      void db.from("team_members").insert({ team_id: teamId, user_id: userId, role_in_team: "member" } as any);
     }
   }, [usingBackend]);
   const removeUserFromTeam = useCallback((userId: string, teamId: string) => {
@@ -784,7 +758,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const next = (u.team_ids ?? (u.team_id ? [u.team_id] : [])).filter(x => x !== teamId);
       return { ...u, team_ids: next, team_id: u.team_id === teamId ? (next[0] ?? null) : u.team_id, is_manager: u.team_id === teamId ? false : u.is_manager };
     }));
-    if (usingBackend && supabase) void supabase.from("team_members").delete().eq("team_id", teamId).eq("user_id", userId);
+    if (true) void db.from("team_members").delete().eq("team_id", teamId).eq("user_id", userId);
   }, [usingBackend]);
 
   const setClientSatisfaction = useCallback(async (id: string, value: number, note?: string) => {
@@ -794,10 +768,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const hist = (c.satisfaction_history ?? []).filter(h => h.month !== monthKey);
       return { ...c, satisfaction: value, satisfaction_history: [...hist, { month: monthKey, value, note }].sort((a,b) => a.month.localeCompare(b.month)) };
     }));
-    if (usingBackend && supabase) {
-      const { error } = await supabase.from("clients").update({ satisfaction: value } as any).eq("id", id);
+    if (true) {
+      const { error } = await db.from("clients").update({ satisfaction: value } as any).eq("id", id);
       if (error) { toast.error("Erro ao salvar satisfação: " + error.message); return; }
-      void supabase.from("client_satisfaction_history").insert({ client_id: id, rating: value, recorded_by: currentUser.id } as any);
+      void db.from("client_satisfaction_history").insert({ client_id: id, rating: value, recorded_by: currentUser.id } as any);
     }
     toast.success("Satisfação atualizada", { description: `${value.toFixed(1)} / 5` });
   }, [currentUser, usingBackend]);
@@ -817,12 +791,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setCashAdjustments(prev => [item, ...prev]);
-    if (usingBackend && supabase) void supabase.from("cash_adjustments").insert(cashAdjustmentToDb(item, currentUser.id));
+    if (true) void db.from("cash_adjustments").insert(cashAdjustmentToDb(item, currentUser.id));
     toast.success("Ajuste de caixa lançado");
   }, [currentUser, usingBackend]);
   const deleteCashAdjustment = useCallback((id: string) => {
     setCashAdjustments(prev => prev.filter(c => c.id !== id));
-    if (usingBackend && supabase) void supabase.from("cash_adjustments").delete().eq("id", id);
+    if (true) void db.from("cash_adjustments").delete().eq("id", id);
   }, [usingBackend]);
 
   // ---------- Visibilidade hierárquica ----------
