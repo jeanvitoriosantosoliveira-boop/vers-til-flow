@@ -99,9 +99,11 @@ export default function Kanban() {
     const targetCol = columns.find(c => c.id === targetId);
     if (!targetCol) return;
     if (targetCol.base) {
-      moveTask(id, { status: targetCol.base, column_id: null });
+      // Coluna base: atualiza status e limpa column_id
+      moveTask(id, { status: targetCol.base as TaskStatus, column_id: null });
     } else {
-      moveTask(id, { column_id: targetCol.id });
+      // Coluna customizada: mantém o status atual, só muda column_id
+      moveTask(id, { column_id: targetCol.id, status: t.status });
     }
   }
 

@@ -164,7 +164,10 @@ function mapTask(row: any): Task {
 }
 
 function taskToDb(data: Partial<Task>) {
-  return data as any;
+  // Remove campos undefined (Supabase ignora undefined, mas null é enviado explicitamente)
+  return Object.fromEntries(
+    Object.entries(data).filter(([, v]) => v !== undefined)
+  ) as any;
 }
 
 function mapTimeEntry(row: any): TimeEntry {
