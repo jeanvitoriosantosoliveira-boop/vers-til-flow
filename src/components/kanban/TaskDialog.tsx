@@ -27,6 +27,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
   const [minutesStr, setMinutesStr] = useState("");
   const [logDesc, setLogDesc] = useState("");
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editing) setForm(editing);
@@ -41,15 +42,26 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
 
   async function save() {
     if (!form.title?.trim()) return;
-    // Se a tarefa tem recorrência configurada e ainda não é template, marcamos como template
-    const payload: Partial<Task> = { ...form };
-    if (payload.recurrence && payload.recurrence.mode !== "none") {
-      payload.is_template = true;
+
+    // Campos seguros para enviar ao banco — exclui campos imutáveis
+    const patch: Partial<Task> = {
+      title: form.title?.trim(),
+      description: form.description ?? null,
+      status: form.status,
+      priority: form.priority,
+      client_id: form.client_id ?? null,
+      assignee_id: form.assignee_id ?? null,
+      due_date: form.due_date ? new Date(form.due_date).toISOString() : null,
+      column_id: form.column_id ?? null,
+      recurrence: form.recurrence ?? { mode: "none" },
+      is_template: (form.recurrence && form.recurrence.mode !== "none") ? true : false,
+    };
+
+    if (editing) {
+      await updateTask(editing.id, patch);
     } else {
-      payload.is_template = false;
+      await createTask(patch);
     }
-    if (editing) await updateTask(editing.id, payload);
-    else await createTask(payload);
     onOpenChange(false);
   }
 
@@ -299,8 +311,8 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
         </div>
 
         <DialogFooter className="gap-2">
-          {editing && currentUser.role === "leader" && (
-            <Button variant="outline" onClick={() => { deleteTask(editing.id); onOpenChange(false); }} className="mr-auto gap-2 text-destructive hover:text-destructive">
+          {editing && (currentUser.role === "leader" || currentUser.role === "manager" || editing.assignee_id === currentUser.id || editing.created_by === currentUser.id) && (
+            <Button variant="outline" onClick={async () => { await deleteTask(editing.id); onOpenChange(false); }} className="mr-auto gap-2 text-destructive hover:text-destructive">
               <Trash2 className="w-3 h-3" /> Excluir
             </Button>
           )}
