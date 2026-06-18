@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, CalendarDays, Video, Phone, MapPin, Trash2 } from "lucide-react";
+import { Plus, CalendarDays, Video, Phone, MapPin, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 interface SEvent { id: string; title: string; lead_id: string | null; kind: string; start_at: string; end_at: string | null; location: string | null; link: string | null; notes: string | null; }
@@ -35,6 +35,7 @@ export default function SalesAgenda() {
   const [events, setEvents] = useState<SEvent[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<SEvent>>({ kind: "meeting", start_at: localDateTimeStr() });
 
   // Filtro de período
@@ -72,12 +73,31 @@ export default function SalesAgenda() {
       start_at: new Date(form.start_at).toISOString(),
       end_at: form.end_at ? new Date(form.end_at).toISOString() : null,
     } as any;
-    const { error } = await supabase.from("sales_events").insert(payload);
+    const { error } = editingId
+      ? await supabase.from("sales_events").update(payload).eq("id", editingId)
+      : await supabase.from("sales_events").insert(payload);
     if (error) return toast.error(error.message);
-    toast.success("Evento criado");
+    toast.success(editingId ? "Evento atualizado" : "Evento criado");
     setOpen(false);
+    setEditingId(null);
     setForm({ kind: "meeting", start_at: localDateTimeStr() });
     load();
+  }
+
+  function openCreate() {
+    setEditingId(null);
+    setForm({ kind: "meeting", start_at: localDateTimeStr() });
+    setOpen(true);
+  }
+
+  function openEdit(event: SEvent) {
+    setEditingId(event.id);
+    setForm({
+      ...event,
+      start_at: localDateTimeStr(new Date(event.start_at)),
+      end_at: event.end_at ? localDateTimeStr(new Date(event.end_at)) : null,
+    });
+    setOpen(true);
   }
 
   async function remove(id: string) {
@@ -145,12 +165,12 @@ export default function SalesAgenda() {
         title="Agenda"
         subtitle="Próximas calls, reuniões e compromissos."
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditingId(null); }}>
             <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="w-4 h-4" /> Novo evento</Button>
+              <Button className="gap-2" onClick={openCreate}><Plus className="w-4 h-4" /> Novo evento</Button>
             </DialogTrigger>
             <DialogContent className="max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden">
-              <DialogHeader><DialogTitle>Novo evento</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{editingId ? "Editar evento" : "Novo evento"}</DialogTitle></DialogHeader>
               <div className="grid gap-3 overflow-y-auto flex-1 pr-1 py-1">
                 <div><Label>Título</Label><Input value={form.title ?? ""} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-2">
@@ -182,7 +202,7 @@ export default function SalesAgenda() {
                 </div>
                 <div><Label>Notas</Label><Textarea value={form.notes ?? ""} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
               </div>
-              <DialogFooter><Button onClick={save}>Salvar</Button></DialogFooter>
+              <DialogFooter><Button onClick={save}>{editingId ? "Salvar alterações" : "Salvar"}</Button></DialogFooter>
             </DialogContent>
           </Dialog>
         }
@@ -255,9 +275,14 @@ export default function SalesAgenda() {
                         {e.notes && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{e.notes}</p>}
                       </div>
                     </div>
-                    <Button size="icon" variant="ghost" onClick={() => remove(e.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(e)} title="Editar">
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => remove(e.id)} title="Remover">
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </Card>
                 );
               })}

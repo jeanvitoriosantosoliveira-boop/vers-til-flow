@@ -12,18 +12,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, MessageCircle, Mail, Phone, Calendar, Trash2, Pencil, Save } from "lucide-react";
+import { Plus, MessageCircle, Instagram, Phone, Calendar, Trash2, Pencil, Save, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 
 const BRL = (v: number) => `R$ ${(v ?? 0).toLocaleString("pt-BR")}`;
 
 interface Stage { id: string; name: string; color: string; position: number; is_won: boolean; is_lost: boolean; }
-interface Lead { id: string; name: string; company: string | null; email: string | null; phone: string | null; whatsapp: string | null; source: string | null; niche?: string | null; estimated_value: number | null; stage_id: string | null; owner_id: string | null; notes: string | null; next_followup_at: string | null; created_at?: string; updated_at?: string; time_spent_seconds?: number | null; }
+interface Lead { id: string; name: string; company: string | null; email: string | null; instagram?: string | null; phone: string | null; whatsapp: string | null; source: string | null; niche?: string | null; estimated_value: number | null; stage_id: string | null; owner_id: string | null; notes: string | null; next_followup_at: string | null; created_at?: string; updated_at?: string; time_spent_seconds?: number | null; }
 interface Activity { id: string; lead_id: string; kind: string; body: string | null; occurred_at: string; user_id: string | null; }
 
 function whatsLink(n?: string | null) { if (!n) return null; const digits = n.replace(/\D/g, ""); return digits ? `https://wa.me/${digits}` : null; }
 function telLink(n?: string | null) { if (!n) return null; const digits = n.replace(/\D/g, ""); return digits ? `tel:${digits}` : null; }
+function instagramLink(n?: string | null) {
+  if (!n) return null;
+  const handle = n.trim().replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/\/$/, "");
+  return handle ? `https://instagram.com/${handle}` : null;
+}
 
 function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id });
@@ -37,11 +42,13 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
           {lead.estimated_value ? <Badge variant="outline" className="text-[10px] shrink-0">{BRL(Number(lead.estimated_value))}</Badge> : null}
         </div>
         {lead.company && <p className="text-xs text-muted-foreground truncate">{lead.company}</p>}
+        {lead.niche && <p className="text-[10px] text-muted-foreground truncate">{lead.niche}</p>}
         {lead.next_followup_at && <p className="text-[10px] text-warning flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(lead.next_followup_at).toLocaleDateString("pt-BR")}</p>}
+        {!!lead.time_spent_seconds && <p className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" /> {Math.round(lead.time_spent_seconds / 60)} min</p>}
       </div>
       <div className="flex items-center gap-1 pt-1 border-t border-border">
         {wa && <a href={wa} target="_blank" rel="noreferrer" className="p-1.5 rounded hover:bg-success/15 text-success" title="WhatsApp"><MessageCircle className="w-3.5 h-3.5" /></a>}
-        {lead.email && <a href={`mailto:${lead.email}`} className="p-1.5 rounded hover:bg-primary/15 text-primary" title="Email"><Mail className="w-3.5 h-3.5" /></a>}
+        {instagramLink(lead.instagram) && <a href={instagramLink(lead.instagram)!} target="_blank" rel="noreferrer" className="p-1.5 rounded hover:bg-primary/15 text-primary" title="Instagram"><Instagram className="w-3.5 h-3.5" /></a>}
         {telLink(lead.phone) && <a href={telLink(lead.phone)!} className="p-1.5 rounded hover:bg-muted text-muted-foreground" title="Telefone"><Phone className="w-3.5 h-3.5" /></a>}
       </div>
     </div>
@@ -52,7 +59,7 @@ function StageColumn({ stage, leads, onCardClick }: { stage: Stage; leads: Lead[
   const { setNodeRef, isOver } = useDroppable({ id: `stage:${stage.id}` });
   const total = leads.reduce((s, l) => s + Number(l.estimated_value || 0), 0);
   return (
-    <div ref={setNodeRef} className={`min-w-[280px] w-[280px] bg-muted/30 rounded-xl p-3 flex flex-col ${isOver ? "ring-2 ring-accent" : ""}`}>
+    <div ref={setNodeRef} className={`min-w-[280px] w-[280px] h-[calc(100vh-260px)] max-h-[calc(100vh-260px)] bg-muted/30 rounded-xl p-3 flex flex-col ${isOver ? "ring-2 ring-accent" : ""}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
@@ -118,7 +125,13 @@ export default function SalesFunnel() {
   const [openNew, setOpenNew] = useState(false);
   const [form, setForm] = useState<Partial<Lead>>({});
   const [openLead, setOpenLead] = useState<Lead | null>(null);
+  const [leadDraft, setLeadDraft] = useState<Partial<Lead>>({});
   const [newActivity, setNewActivity] = useState<{ kind: string; body: string }>({ kind: "note", body: "" });
+
+  function openLeadDialog(lead: Lead) {
+    setOpenLead(lead);
+    setLeadDraft(lead);
+  }
 
   async function createLead() {
     const firstStage = stages.find(s => !s.is_won && !s.is_lost) ?? stages[0];
@@ -147,10 +160,28 @@ export default function SalesFunnel() {
     await supabase.from("leads").update({ stage_id: newStage }).eq("id", id);
   }
 
-  async function updateLead(patch: Partial<Lead>) {
+  async function saveLeadDraft() {
     if (!openLead) return;
-    await supabase.from("leads").update(patch).eq("id", openLead.id);
-    setOpenLead({ ...openLead, ...patch } as Lead);
+    const payload = {
+      name: leadDraft.name?.trim() || leadDraft.company?.trim() || "Lead sem nome",
+      company: leadDraft.company?.trim() || null,
+      instagram: leadDraft.instagram?.trim() || null,
+      phone: leadDraft.phone?.trim() || null,
+      whatsapp: leadDraft.whatsapp?.trim() || null,
+      source: leadDraft.source?.trim() || null,
+      niche: leadDraft.niche?.trim() || null,
+      estimated_value: Number(leadDraft.estimated_value || 0),
+      stage_id: leadDraft.stage_id ?? null,
+      owner_id: leadDraft.owner_id ?? null,
+      notes: leadDraft.notes?.trim() || null,
+      next_followup_at: leadDraft.next_followup_at ?? null,
+      time_spent_seconds: Number(leadDraft.time_spent_seconds || 0),
+    };
+    const { data, error } = await supabase.from("leads").update(payload as any).eq("id", openLead.id).select().single();
+    if (error) return toast.error(error.message);
+    setOpenLead(data as Lead);
+    setLeadDraft(data as Lead);
+    toast.success("Lead salvo");
     load();
   }
   async function saveStage() {
@@ -225,7 +256,7 @@ export default function SalesFunnel() {
                   <div><Label>WhatsApp</Label><Input placeholder="55119..." value={form.whatsapp ?? ""} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} /></div>
                   <div><Label>Telefone</Label><Input value={form.phone ?? ""} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
                 </div>
-                <div><Label>Email</Label><Input type="email" value={form.email ?? ""} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
+                <div><Label>Instagram</Label><Input value={form.instagram ?? ""} placeholder="@perfil ou link" onChange={e => setForm(f => ({ ...f, instagram: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-2">
                   <div><Label>Origem</Label><Input value={form.source ?? ""} onChange={e => setForm(f => ({ ...f, source: e.target.value }))} /></div>
                   <div><Label>Ticket estimado</Label><Input type="number" step="0.01" value={form.estimated_value ?? ""} onChange={e => setForm(f => ({ ...f, estimated_value: Number(e.target.value) }))} /></div>
@@ -263,10 +294,10 @@ export default function SalesFunnel() {
       />
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-4">
+        <div className="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2">
           {stages.map(s => (
             <div key={s.id} className="relative group">
-              <StageColumn stage={s} leads={leads.filter(l => l.stage_id === s.id && (period.preset === "all" || inPeriod(l.updated_at ?? l.created_at, period)))} onCardClick={setOpenLead} />
+              <StageColumn stage={s} leads={leads.filter(l => l.stage_id === s.id && (period.preset === "all" || inPeriod(l.updated_at ?? l.created_at, period)))} onCardClick={openLeadDialog} />
               {isLeader && (
                 <div className="absolute top-2 right-2 hidden group-hover:flex gap-1">
                   {!s.is_won && <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStageForm(s)}><Pencil className="w-3 h-3" /></Button>}
@@ -292,35 +323,36 @@ export default function SalesFunnel() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!openLead} onOpenChange={(o) => !o && setOpenLead(null)}>
+      <Dialog open={!!openLead} onOpenChange={(o) => { if (!o) { setOpenLead(null); setLeadDraft({}); } }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {openLead && (
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">{openLead.name}
-                  {whatsLink(openLead.whatsapp || openLead.phone) && <a target="_blank" rel="noreferrer" href={whatsLink(openLead.whatsapp || openLead.phone)!} className="text-success"><MessageCircle className="w-4 h-4" /></a>}
-                  {openLead.email && <a href={`mailto:${openLead.email}`} className="text-primary"><Mail className="w-4 h-4" /></a>}
-                  {telLink(openLead.phone) && <a href={telLink(openLead.phone)!} className="text-muted-foreground"><Phone className="w-4 h-4" /></a>}
+                <DialogTitle className="flex items-center gap-2">{leadDraft.name || "Lead"}
+                  {whatsLink(leadDraft.whatsapp || leadDraft.phone) && <a target="_blank" rel="noreferrer" href={whatsLink(leadDraft.whatsapp || leadDraft.phone)!} className="text-success"><MessageCircle className="w-4 h-4" /></a>}
+                  {instagramLink(leadDraft.instagram) && <a target="_blank" rel="noreferrer" href={instagramLink(leadDraft.instagram)!} className="text-primary"><Instagram className="w-4 h-4" /></a>}
+                  {telLink(leadDraft.phone) && <a href={telLink(leadDraft.phone)!} className="text-muted-foreground"><Phone className="w-4 h-4" /></a>}
                 </DialogTitle>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>Empresa</Label><Input value={openLead.company ?? ""} onChange={e => updateLead({ company: e.target.value })} /></div>
-                <div><Label>Nicho / Segmento</Label><Input value={openLead.niche ?? ""} onChange={e => updateLead({ niche: e.target.value })} /></div>
-                <div><Label>Email</Label><Input value={openLead.email ?? ""} onChange={e => updateLead({ email: e.target.value })} /></div>
-                <div><Label>WhatsApp</Label><Input value={openLead.whatsapp ?? ""} onChange={e => updateLead({ whatsapp: e.target.value })} /></div>
-                <div><Label>Telefone</Label><Input value={openLead.phone ?? ""} onChange={e => updateLead({ phone: e.target.value })} /></div>
-                <div><Label>Ticket estimado</Label><Input type="number" value={openLead.estimated_value ?? 0} onChange={e => updateLead({ estimated_value: Number(e.target.value) })} /></div>
-                <div><Label>Origem</Label><Input value={openLead.source ?? ""} onChange={e => updateLead({ source: e.target.value })} /></div>
-                <div><Label>Tempo gasto (min)</Label><Input type="number" value={Math.round((openLead.time_spent_seconds ?? 0) / 60)} onChange={e => updateLead({ time_spent_seconds: Number(e.target.value) * 60 })} /></div>
-                <div><Label>Próximo follow-up</Label><Input type="datetime-local" value={openLead.next_followup_at ? openLead.next_followup_at.slice(0, 16) : ""} onChange={e => updateLead({ next_followup_at: e.target.value ? new Date(e.target.value).toISOString() : null })} /></div>
+                <div><Label>Nome do lead</Label><Input value={leadDraft.name ?? ""} onChange={e => setLeadDraft(f => ({ ...f, name: e.target.value }))} /></div>
+                <div><Label>Empresa</Label><Input value={leadDraft.company ?? ""} onChange={e => setLeadDraft(f => ({ ...f, company: e.target.value }))} /></div>
+                <div><Label>Nicho / Segmento</Label><Input value={leadDraft.niche ?? ""} onChange={e => setLeadDraft(f => ({ ...f, niche: e.target.value }))} /></div>
+                <div><Label>Instagram</Label><Input value={leadDraft.instagram ?? ""} placeholder="@perfil ou link" onChange={e => setLeadDraft(f => ({ ...f, instagram: e.target.value }))} /></div>
+                <div><Label>WhatsApp</Label><Input value={leadDraft.whatsapp ?? ""} onChange={e => setLeadDraft(f => ({ ...f, whatsapp: e.target.value }))} /></div>
+                <div><Label>Telefone</Label><Input value={leadDraft.phone ?? ""} onChange={e => setLeadDraft(f => ({ ...f, phone: e.target.value }))} /></div>
+                <div><Label>Ticket estimado</Label><Input type="number" value={leadDraft.estimated_value ?? 0} onChange={e => setLeadDraft(f => ({ ...f, estimated_value: Number(e.target.value) }))} /></div>
+                <div><Label>Origem</Label><Input value={leadDraft.source ?? ""} onChange={e => setLeadDraft(f => ({ ...f, source: e.target.value }))} /></div>
+                <div><Label>Tempo gasto (min)</Label><Input type="number" value={Math.round((leadDraft.time_spent_seconds ?? 0) / 60)} onChange={e => setLeadDraft(f => ({ ...f, time_spent_seconds: Number(e.target.value) * 60 }))} /></div>
+                <div><Label>Próximo follow-up</Label><Input type="datetime-local" value={leadDraft.next_followup_at ? leadDraft.next_followup_at.slice(0, 16) : ""} onChange={e => setLeadDraft(f => ({ ...f, next_followup_at: e.target.value ? new Date(e.target.value).toISOString() : null }))} /></div>
                 <div><Label>Estágio</Label>
-                  <Select value={openLead.stage_id ?? ""} onValueChange={v => updateLead({ stage_id: v })}>
+                  <Select value={leadDraft.stage_id ?? ""} onValueChange={v => setLeadDraft(f => ({ ...f, stage_id: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
               </div>
-              <div><Label>Notas</Label><Textarea value={openLead.notes ?? ""} onChange={e => updateLead({ notes: e.target.value })} /></div>
+              <div><Label>Notas</Label><Textarea value={leadDraft.notes ?? ""} onChange={e => setLeadDraft(f => ({ ...f, notes: e.target.value }))} rows={5} /></div>
 
               <div className="border-t border-border pt-3">
                 <h4 className="font-semibold text-sm mb-2">Atividades</h4>
@@ -330,7 +362,7 @@ export default function SalesFunnel() {
                     <SelectContent>
                       <SelectItem value="note">Nota</SelectItem>
                       <SelectItem value="call">Ligação</SelectItem>
-                      <SelectItem value="email">Email</SelectItem>
+                      <SelectItem value="instagram">Instagram</SelectItem>
                       <SelectItem value="whatsapp">WhatsApp</SelectItem>
                       <SelectItem value="meeting">Reunião</SelectItem>
                     </SelectContent>
@@ -351,7 +383,10 @@ export default function SalesFunnel() {
 
               <DialogFooter className="justify-between sm:justify-between">
                 <Button variant="ghost" className="text-destructive" onClick={deleteLead}><Trash2 className="w-4 h-4 mr-2" />Excluir</Button>
-                <Button onClick={() => setOpenLead(null)}>Fechar</Button>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => { setOpenLead(null); setLeadDraft({}); }}>Fechar</Button>
+                  <Button onClick={saveLeadDraft}>Salvar alterações</Button>
+                </div>
               </DialogFooter>
             </>
           )}

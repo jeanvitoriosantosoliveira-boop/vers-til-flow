@@ -393,8 +393,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user?.id) return;
-    const upsert = <T extends { id: string }>(items: T[], item: T) =>
-      items.some((x) => x.id === item.id) ? items.map((x) => x.id === item.id ? item : x) : [item, ...items];
+    const upsert = <T extends { id: string }>(items: T[], item: T) => {
+      const next = items.some((x) => x.id === item.id)
+        ? items.map((x) => x.id === item.id ? item : x)
+        : [item, ...items];
+      return [...new Map(next.map((x) => [x.id, x])).values()];
+    };
     const remove = <T extends { id: string }>(items: T[], id: string) => items.filter((x) => x.id !== id);
 
     const channel = db

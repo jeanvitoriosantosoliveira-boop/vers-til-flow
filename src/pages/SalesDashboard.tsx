@@ -55,6 +55,10 @@ export default function SalesDashboard() {
   const wonThisMonth = leads.filter(l => l.stage_id === wonStage?.id && inPeriod(l.updated_at || l.created_at, period));
   const wonValue = wonThisMonth.reduce((s, l) => s + Number(l.estimated_value || 0), 0);
   const conversion = leads.length ? Math.round((leads.filter(l => l.stage_id === wonStage?.id).length / leads.length) * 100) : 0;
+  const salesSeconds = leads
+    .filter(l => inPeriod(l.updated_at || l.created_at, period))
+    .reduce((s, l) => s + Number(l.time_spent_seconds || 0), 0);
+  const salesHoursLabel = `${Math.floor(salesSeconds / 3600)}h ${Math.round((salesSeconds % 3600) / 60)}min`;
 
   const upcomingFollowups = useMemo(() => leads.filter(l => l.next_followup_at).sort((a, b) => a.next_followup_at.localeCompare(b.next_followup_at)).slice(0, 5), [leads]);
 
@@ -62,11 +66,12 @@ export default function SalesDashboard() {
     <div className="p-4 max-w-7xl mx-auto">
       <PageHeader title="Comercial" subtitle={user?.role === "leader" ? "Visão geral de todo o comercial." : "Visão geral do seu funil de vendas."} actions={<PeriodFilter value={period} onChange={setPeriod} />} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><Target className="w-3 h-3" /> Leads no funil</div><p className="font-display text-2xl font-bold mt-2">{openLeads.length}</p></Card>
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Pipeline</div><p className="font-display text-2xl font-bold mt-2 text-primary">{BRL(pipelineValue)}</p></Card>
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Vendidos no período</div><p className="font-display text-2xl font-bold mt-2 text-success">{BRL(wonValue)}</p><p className="text-[10px] text-muted-foreground mt-1">{wonThisMonth.length} negócios</p></Card>
         <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" /> Conversão</div><p className="font-display text-2xl font-bold mt-2">{conversion}%</p></Card>
+        <Card className="p-5"><div className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" /> Tempo em vendas</div><p className="font-display text-2xl font-bold mt-2">{salesHoursLabel}</p></Card>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">

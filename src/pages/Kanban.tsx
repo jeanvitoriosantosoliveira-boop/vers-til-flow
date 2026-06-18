@@ -87,7 +87,7 @@ export default function Kanban() {
       });
     }
 
-    return list;
+    return [...new Map(list.map((task) => [task.id, task])).values()];
   }, [tasks, currentUser, filterClient, filterAssignee, period, query, clients, users]);
 
   function onDragEnd(e: DragEndEvent) {

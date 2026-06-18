@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { PageHeader } from "@/components/PageHeader";
@@ -12,13 +12,21 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Res
 import { relativeDue, formatSeconds } from "@/lib/format";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 import { canViewFinancial } from "@/lib/roleVisibility";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Dashboard() {
   const { tasks, clients, users, timeEntries, currentUser } = useApp();
   const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>({ preset: "week" });
+  const [salesLeads, setSalesLeads] = useState<any[]>([]);
 
   const isLeader = currentUser.role === "leader";
+
+  useEffect(() => {
+    let query = supabase.from("leads").select("id,owner_id,time_spent_seconds,created_at,updated_at");
+    if (!isLeader && currentUser.role !== "manager") query = query.eq("owner_id", currentUser.id);
+    query.then(({ data }) => setSalesLeads(data ?? []));
+  }, [currentUser.id, currentUser.role, isLeader]);
 
   const myScope = useMemo(
     () => isLeader ? tasks : tasks.filter(t => t.assignee_id === currentUser.id),
@@ -40,11 +48,15 @@ export default function Dashboard() {
 
   // Tempo lançado no período
   const periodSeconds = useMemo(() => {
-    return timeEntries
+    const taskSeconds = timeEntries
       .filter(e => isLeader || e.user_id === currentUser.id)
       .filter(e => inPeriod(e.logged_at, period))
       .reduce((s, e) => s + e.seconds, 0);
-  }, [timeEntries, period, isLeader, currentUser.id]);
+    const salesSeconds = salesLeads
+      .filter(l => inPeriod(l.updated_at ?? l.created_at, period))
+      .reduce((s, l) => s + Number(l.time_spent_seconds || 0), 0);
+    return taskSeconds + salesSeconds;
+  }, [timeEntries, period, isLeader, currentUser.id, salesLeads]);
 
   // Receita estimada do mês (líder)
   const monthlyRevenue = useMemo(() => clients.reduce((s, c) => s + (c.monthly_fee ?? 0), 0), [clients]);
