@@ -106,6 +106,7 @@ export default function Collaborators() {
                     {r === "manager" && <Badge variant="secondary" className="gap-1"><Shield className="w-3 h-3" />Gerente</Badge>}
                     {r === "collaborator" && <Badge variant="outline">Colaborador</Badge>}
                     {r === "commercial" && <Badge variant="outline" className="border-accent/40 text-accent">Comercial</Badge>}
+                    {r === "studio" && <Badge variant="outline" className="border-primary/40 text-primary">Studio</Badge>}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{p.position ?? "—"}</p>
                   <p className="text-xs text-muted-foreground truncate">{p.email}</p>
