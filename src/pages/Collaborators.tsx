@@ -58,6 +58,7 @@ export default function Collaborators() {
     if (rs.includes("leader")) return "leader";
     if (rs.includes("manager")) return "manager";
     if (rs.includes("commercial")) return "commercial";
+    if (rs.includes("studio")) return "studio";
     return "collaborator";
   }
 
