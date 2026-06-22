@@ -17,7 +17,7 @@ type Profile = {
   position: string | null; phone: string | null; is_active: boolean;
   contract_start: string | null; contract_end: string | null;
 };
-type RoleRow = { user_id: string; role: "leader" | "manager" | "collaborator" | "commercial" };
+type RoleRow = { user_id: string; role: "leader" | "manager" | "collaborator" | "commercial" | "studio" };
 type Team = { id: string; name: string };
 
 export default function Collaborators() {
@@ -53,7 +53,7 @@ export default function Collaborators() {
     load();
   }
 
-  function roleOf(uid: string): "leader" | "manager" | "collaborator" | "commercial" {
+  function roleOf(uid: string): "leader" | "manager" | "collaborator" | "commercial" | "studio" {
     const rs = roles.filter(x => x.user_id === uid).map(x => x.role);
     if (rs.includes("leader")) return "leader";
     if (rs.includes("manager")) return "manager";
@@ -131,7 +131,7 @@ function NewCollaboratorDialog({
   const [password, setPassword] = useState("");
   const [position, setPosition] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"collaborator" | "manager" | "leader" | "commercial">("collaborator");
+  const [role, setRole] = useState<"collaborator" | "manager" | "leader" | "commercial" | "studio">("collaborator");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -171,6 +171,7 @@ function NewCollaboratorDialog({
               <SelectContent>
                 <SelectItem value="collaborator">Colaborador</SelectItem>
                 {canCreateManagers && <SelectItem value="commercial">Comercial</SelectItem>}
+                {canCreateManagers && <SelectItem value="studio">Studio</SelectItem>}
                 {canCreateManagers && <SelectItem value="manager">Gerente</SelectItem>}
                 {canCreateManagers && <SelectItem value="leader">Líder</SelectItem>}
               </SelectContent>
