@@ -97,7 +97,7 @@ function saveLS<T>(key: string, value: T) {
 }
 
 function mapRole(role?: string | null): Role {
-  if (role === "leader" || role === "manager" || role === "commercial") return role;
+  if (role === "leader" || role === "manager" || role === "commercial" || role === "studio") return role;
   return "collaborator";
 }
 
@@ -109,6 +109,8 @@ function mapUser(profile: any, roles: any[], members: any[]): User {
     ? "manager"
     : roleList.includes("commercial")
     ? "commercial"
+    : roleList.includes("studio")
+    ? "studio"
     : "collaborator";
   const memberships = members.filter((m) => m.user_id === profile.id);
   const teamIds = memberships.map((m) => m.team_id);

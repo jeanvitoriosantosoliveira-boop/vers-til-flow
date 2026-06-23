@@ -682,6 +682,56 @@ export type Database = {
         }
         Relationships: []
       }
+      studio_clients: {
+        Row: {
+          address: string | null
+          city: string
+          cpf: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          city: string
+          cpf?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          city?: string
+          cpf?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_clients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       studio_expenses: {
         Row: {
           amount: number
@@ -782,6 +832,60 @@ export type Database = {
           },
           {
             foreignKeyName: "studio_sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studio_shoots: {
+        Row: {
+          city: string
+          client_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          photos_delivered: number
+          shoot_date: string | null
+          shoot_type: Database["public"]["Enums"]["studio_shoot_type"]
+          updated_at: string
+        }
+        Insert: {
+          city: string
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          photos_delivered?: number
+          shoot_date?: string | null
+          shoot_type: Database["public"]["Enums"]["studio_shoot_type"]
+          updated_at?: string
+        }
+        Update: {
+          city?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          photos_delivered?: number
+          shoot_date?: string | null
+          shoot_type?: Database["public"]["Enums"]["studio_shoot_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_shoots_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "studio_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "studio_shoots_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -1032,8 +1136,22 @@ export type Database = {
       is_leader_or_manager: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "leader" | "manager" | "collaborator" | "commercial"
+      app_role: "leader" | "manager" | "collaborator" | "commercial" | "studio"
       client_status: "active" | "paused" | "archived"
+      studio_shoot_type:
+        | "casal"
+        | "gestante"
+        | "corporativo"
+        | "individual"
+        | "familia"
+        | "casamento"
+        | "aniversario"
+        | "infantil"
+        | "empresarial"
+        | "parto"
+        | "sensual"
+        | "formatura"
+        | "produto"
       task_priority: "low" | "medium" | "high" | "urgent"
       task_status: "todo" | "in_progress" | "review" | "done"
       team_member_role: "manager" | "member"
@@ -1164,8 +1282,23 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["leader", "manager", "collaborator", "commercial"],
+      app_role: ["leader", "manager", "collaborator", "commercial", "studio"],
       client_status: ["active", "paused", "archived"],
+      studio_shoot_type: [
+        "casal",
+        "gestante",
+        "corporativo",
+        "individual",
+        "familia",
+        "casamento",
+        "aniversario",
+        "infantil",
+        "empresarial",
+        "parto",
+        "sensual",
+        "formatura",
+        "produto",
+      ],
       task_priority: ["low", "medium", "high", "urgent"],
       task_status: ["todo", "in_progress", "review", "done"],
       team_member_role: ["manager", "member"],

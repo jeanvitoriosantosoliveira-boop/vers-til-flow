@@ -10,20 +10,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, UserPlus, Shield, Crown, Trash2, Pencil, Check, X } from "lucide-react";
+import { Plus, UserPlus, Shield, Crown, Trash2, Pencil, Check, X, KeyRound } from "lucide-react";
 
 type Profile = {
   id: string; name: string; email: string; avatar_url: string | null;
   position: string | null; phone: string | null; is_active: boolean;
   contract_start: string | null; contract_end: string | null;
 };
-type RoleRow = { user_id: string; role: "leader" | "manager" | "collaborator" | "commercial" };
+type CollaboratorRole = "leader" | "manager" | "collaborator" | "commercial" | "studio";
+type RoleRow = { user_id: string; role: CollaboratorRole };
 type Team = { id: string; name: string };
 
 const ROLE_LABELS: Record<string, string> = {
   leader: "Líder",
   manager: "Gerente",
   commercial: "Comercial",
+  studio: "Studio",
   collaborator: "Colaborador",
 };
 
@@ -36,8 +38,12 @@ export default function Collaborators() {
   const [open, setOpen] = useState(false);
   // Controle de edição de role inline
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
-  const [pendingRole, setPendingRole] = useState<"leader" | "manager" | "collaborator" | "commercial">("collaborator");
+  const [pendingRole, setPendingRole] = useState<CollaboratorRole>("collaborator");
   const [savingRole, setSavingRole] = useState(false);
+  const [passwordTarget, setPasswordTarget] = useState<Profile | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -64,11 +70,12 @@ export default function Collaborators() {
     load();
   }
 
-  function roleOf(uid: string): "leader" | "manager" | "collaborator" | "commercial" {
+  function roleOf(uid: string): CollaboratorRole {
     const rs = roles.filter(x => x.user_id === uid).map(x => x.role);
     if (rs.includes("leader")) return "leader";
     if (rs.includes("manager")) return "manager";
     if (rs.includes("commercial")) return "commercial";
+    if (rs.includes("studio")) return "studio";
     return "collaborator";
   }
 
@@ -96,6 +103,49 @@ export default function Collaborators() {
       toast.error(err.message ?? "Erro ao alterar nível");
     } finally {
       setSavingRole(false);
+    }
+  }
+
+  function resetPasswordDialog() {
+    setPasswordTarget(null);
+    setNewPassword("");
+    setConfirmPassword("");
+  }
+
+  async function changeCollaboratorPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!passwordTarget) return;
+
+    if (newPassword.length < 6) {
+      toast.error("A nova senha precisa ter no mínimo 6 caracteres");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("As senhas não coincidem");
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("reset-user-password", {
+        body: {
+          user_id: passwordTarget.id,
+          password: newPassword,
+        },
+      });
+
+      if (error || (data as any)?.error) {
+        toast.error((data as any)?.error ?? error?.message ?? "Erro ao alterar senha");
+        return;
+      }
+
+      toast.success("Senha alterada com sucesso");
+      resetPasswordDialog();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro inesperado ao alterar senha");
+    } finally {
+      setSavingPassword(false);
     }
   }
 
@@ -146,6 +196,7 @@ export default function Collaborators() {
                         {r === "manager"      && <Badge variant="secondary" className="gap-1"><Shield className="w-3 h-3" />Gerente</Badge>}
                         {r === "collaborator" && <Badge variant="outline">Colaborador</Badge>}
                         {r === "commercial"   && <Badge variant="outline" className="border-accent/40 text-accent">Comercial</Badge>}
+                        {r === "studio"       && <Badge variant="outline" className="border-primary/40 text-primary">Studio</Badge>}
                         {isLeader && p.id !== user?.id && (
                           <button
                             onClick={() => startEditRole(p.id)}
@@ -169,6 +220,7 @@ export default function Collaborators() {
                         <SelectContent>
                           <SelectItem value="collaborator">Colaborador</SelectItem>
                           <SelectItem value="commercial">Comercial</SelectItem>
+                          <SelectItem value="studio">Studio</SelectItem>
                           <SelectItem value="manager">Gerente</SelectItem>
                           <SelectItem value="leader">Líder</SelectItem>
                         </SelectContent>
@@ -196,15 +248,62 @@ export default function Collaborators() {
                   <p className="text-xs text-muted-foreground truncate">{p.email}</p>
                 </div>
                 {isLeader && p.id !== user?.id && !isEditing && (
-                  <Button size="icon" variant="ghost" onClick={() => removeCollaborator(p.id, p.name)} title="Remover">
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
+                  <div className="flex shrink-0 flex-col gap-1">
+                    <Button size="icon" variant="ghost" onClick={() => setPasswordTarget(p)} title="Alterar senha">
+                      <KeyRound className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => removeCollaborator(p.id, p.name)} title="Remover">
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
                 )}
               </Card>
             );
           })}
         </div>
       )}
+
+      <Dialog open={!!passwordTarget} onOpenChange={(next) => {
+        if (!next && !savingPassword) resetPasswordDialog();
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar senha</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={changeCollaboratorPassword} className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              A senha atual fica criptografada e não pode ser exibida. Defina uma nova senha para {passwordTarget?.name}.
+            </p>
+            <div>
+              <Label>Nova senha* (mín 6)</Label>
+              <Input
+                type="text"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                required
+                minLength={6}
+                disabled={savingPassword}
+              />
+            </div>
+            <div>
+              <Label>Confirmar nova senha*</Label>
+              <Input
+                type="text"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                required
+                minLength={6}
+                disabled={savingPassword}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={savingPassword} className="w-full sm:w-auto">
+                {savingPassword ? "Alterando..." : "Alterar senha"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -218,7 +317,7 @@ function NewCollaboratorDialog({
   const [password, setPassword] = useState("");
   const [position, setPosition] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"collaborator" | "manager" | "leader" | "commercial">("collaborator");
+  const [role, setRole] = useState<CollaboratorRole>("collaborator");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -307,6 +406,7 @@ function NewCollaboratorDialog({
               <SelectContent>
                 <SelectItem value="collaborator">Colaborador</SelectItem>
                 {canCreateManagers && <SelectItem value="commercial">Comercial</SelectItem>}
+                {canCreateManagers && <SelectItem value="studio">Studio</SelectItem>}
                 {canCreateManagers && <SelectItem value="manager">Gerente</SelectItem>}
                 {canCreateManagers && <SelectItem value="leader">Líder</SelectItem>}
               </SelectContent>

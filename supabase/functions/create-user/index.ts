@@ -62,13 +62,13 @@ Deno.serve(async (req) => {
     if (password.length < 6) {
       return json({ error: 'Senha deve ter no mínimo 6 caracteres' }, 400);
     }
-    if (!['collaborator', 'manager', 'commercial', 'leader'].includes(role)) {
+    if (!['collaborator', 'manager', 'commercial', 'studio', 'leader'].includes(role)) {
       return json({ error: 'Nível inválido' }, 400);
     }
 
-    // Only leader may create leaders/managers/commercial
-    if ((role === 'leader' || role === 'manager' || role === 'commercial') && !callerRoles.includes('leader')) {
-      return json({ error: 'Apenas líderes podem criar gerentes, líderes ou comerciais' }, 403);
+    // Only leader may create elevated or specialized profiles.
+    if ((role === 'leader' || role === 'manager' || role === 'commercial' || role === 'studio') && !callerRoles.includes('leader')) {
+      return json({ error: 'Apenas líderes podem criar gerentes, líderes, comerciais ou studio' }, 403);
     }
 
     // Create auth user

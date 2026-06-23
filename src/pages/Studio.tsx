@@ -23,7 +23,7 @@ interface SExpense { id: string; title: string; category: string; amount: number
 export default function Studio() {
   const { user } = useAuth();
   if (!user) return null;
-  if (!user.is_leader) return <Navigate to="/" replace />;
+  if (user.role !== "studio") return <Navigate to="/" replace />;
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [expenses, setExpenses] = useState<SExpense[]>([]);
