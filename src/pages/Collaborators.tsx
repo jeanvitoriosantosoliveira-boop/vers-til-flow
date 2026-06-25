@@ -29,8 +29,25 @@ const ROLE_LABELS: Record<string, string> = {
   collaborator: "Colaborador",
 };
 
+async function getFunctionErrorMessage(error: unknown, data: unknown, fallback: string) {
+  const dataError = (data as any)?.error;
+  if (dataError) return dataError;
+
+  const response = (error as any)?.context;
+  if (response instanceof Response) {
+    try {
+      const body = await response.clone().json();
+      if (body?.error) return body.error;
+    } catch {
+      // Mantém a mensagem padrão quando a resposta não vier em JSON.
+    }
+  }
+
+  return (error as any)?.message ?? fallback;
+}
+
 export default function Collaborators() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -116,6 +133,11 @@ export default function Collaborators() {
     e.preventDefault();
     if (!passwordTarget) return;
 
+    if (!session?.access_token) {
+      toast.error("Sua sessão expirou. Por favor, faça login novamente.");
+      return;
+    }
+
     if (newPassword.length < 6) {
       toast.error("A nova senha precisa ter no mínimo 6 caracteres");
       return;
@@ -129,6 +151,9 @@ export default function Collaborators() {
     setSavingPassword(true);
     try {
       const { data, error } = await supabase.functions.invoke("reset-user-password", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: {
           user_id: passwordTarget.id,
           password: newPassword,
@@ -136,7 +161,7 @@ export default function Collaborators() {
       });
 
       if (error || (data as any)?.error) {
-        toast.error((data as any)?.error ?? error?.message ?? "Erro ao alterar senha");
+        toast.error(await getFunctionErrorMessage(error, data, "Erro ao alterar senha"));
         return;
       }
 

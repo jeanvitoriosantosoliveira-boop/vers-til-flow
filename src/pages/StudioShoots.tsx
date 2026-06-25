@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,8 @@ type Shoot = {
   shoot_type: StudioShootType;
   shoot_date: string | null;
   photos_delivered: number;
+  business_value: number | null;
+  payment_status: string;
   notes: string | null;
 };
 
@@ -47,6 +50,12 @@ const SHOOT_TYPES: Array<{ value: StudioShootType; label: string }> = [
   { value: "formatura", label: "Formatura" },
   { value: "produto", label: "Produto" },
 ];
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  paid: "Pago",
+  canceled: "Cancelado",
+};
 
 export default function StudioShoots() {
   const { user } = useAuth();
@@ -75,8 +84,11 @@ export default function StudioShoots() {
   }, []);
 
   const cities = useMemo(
-    () => Array.from(new Set(shoots.map((shoot) => shoot.city).filter(Boolean))).sort(),
-    [shoots],
+    () => Array.from(new Set([
+      ...shoots.map((shoot) => shoot.city),
+      ...clients.map((client) => client.city),
+    ].filter(Boolean))).sort(),
+    [clients, shoots],
   );
   const clientMap = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   const filtered = shoots.filter((shoot) =>
@@ -108,6 +120,7 @@ export default function StudioShoots() {
           </DialogTrigger>
           <ShootFormDialog
             clients={clients}
+            cities={cities}
             editing={editing}
             userId={user.id}
             onSaved={() => {
@@ -168,6 +181,14 @@ export default function StudioShoots() {
                 </div>
               </div>
               <p className="text-xs"><span className="text-muted-foreground">Fotos entregues:</span> <strong>{shoot.photos_delivered}</strong></p>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">
+                  R$ {Number(shoot.business_value ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </Badge>
+                <Badge variant={shoot.payment_status === "paid" ? "default" : "secondary"}>
+                  {PAYMENT_STATUS_LABELS[shoot.payment_status] ?? shoot.payment_status}
+                </Badge>
+              </div>
               {shoot.notes && <p className="text-xs text-muted-foreground">{shoot.notes}</p>}
             </Card>
           );
@@ -182,28 +203,48 @@ export default function StudioShoots() {
   );
 }
 
-function ShootFormDialog({ clients, editing, onSaved, userId }: { clients: Client[]; editing: Shoot | null; onSaved: () => void; userId: string }) {
+function ShootFormDialog({ clients, cities, editing, onSaved, userId }: { clients: Client[]; cities: string[]; editing: Shoot | null; onSaved: () => void; userId: string }) {
   const [clientId, setClientId] = useState(editing?.client_id ?? "");
   const [shootType, setShootType] = useState<StudioShootType>(editing?.shoot_type ?? "casal");
   const [shootDate, setShootDate] = useState(editing?.shoot_date ?? "");
   const [photos, setPhotos] = useState(String(editing?.photos_delivered ?? 0));
+  const [businessValue, setBusinessValue] = useState(editing?.business_value ? String(editing.business_value) : "");
+  const [paymentStatus, setPaymentStatus] = useState(editing?.payment_status ?? "pending");
   const [city, setCity] = useState(editing?.city ?? "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [busy, setBusy] = useState(false);
+  const cityOptions = useMemo(
+    () => Array.from(new Set([...cities, city].filter(Boolean))).sort(),
+    [cities, city],
+  );
+  const filteredClients = useMemo(
+    () => clients.filter((client) => !city || client.city === city || client.id === clientId),
+    [city, clientId, clients],
+  );
 
   useEffect(() => {
     setClientId(editing?.client_id ?? "");
     setShootType(editing?.shoot_type ?? "casal");
     setShootDate(editing?.shoot_date ?? "");
     setPhotos(String(editing?.photos_delivered ?? 0));
+    setBusinessValue(editing?.business_value ? String(editing.business_value) : "");
+    setPaymentStatus(editing?.payment_status ?? "pending");
     setCity(editing?.city ?? "");
     setNotes(editing?.notes ?? "");
   }, [editing]);
 
   useEffect(() => {
     const client = clients.find((item) => item.id === clientId);
-    if (client && !city) setCity(client.city);
-  }, [clientId, clients, city]);
+    if (!client) return;
+    if (!editing && client.city !== city) setCity(client.city);
+    if (editing && !city) setCity(client.city);
+  }, [clientId, clients, city, editing]);
+
+  useEffect(() => {
+    if (!city || !clientId) return;
+    const client = clients.find((item) => item.id === clientId);
+    if (client && client.city !== city) setClientId("");
+  }, [city, clientId, clients]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -219,6 +260,8 @@ function ShootFormDialog({ clients, editing, onSaved, userId }: { clients: Clien
       shoot_type: shootType,
       shoot_date: shootDate || null,
       photos_delivered: Number.parseInt(photos, 10) || 0,
+      business_value: businessValue ? Number(businessValue) : 0,
+      payment_status: paymentStatus,
       notes: notes.trim() || null,
       created_by: userId,
     };
@@ -238,13 +281,25 @@ function ShootFormDialog({ clients, editing, onSaved, userId }: { clients: Clien
       <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} ensaio</DialogTitle></DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div>
+          <Label>Cidade*</Label>
+          <Select value={city} onValueChange={setCity}>
+            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {cityOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
           <Label>Cliente*</Label>
           <Select value={clientId} onValueChange={setClientId}>
             <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
             <SelectContent>
-              {clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.full_name} ({client.city})</SelectItem>)}
+              {filteredClients.map((client) => <SelectItem key={client.id} value={client.id}>{client.full_name} ({client.city})</SelectItem>)}
             </SelectContent>
           </Select>
+          {city && filteredClients.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-1">Nenhum cliente cadastrado para esta cidade.</p>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -255,8 +310,19 @@ function ShootFormDialog({ clients, editing, onSaved, userId }: { clients: Clien
             </Select>
           </div>
           <div><Label>Data</Label><Input type="date" value={shootDate} onChange={(event) => setShootDate(event.target.value)} /></div>
-          <div><Label>Cidade*</Label><Input value={city} onChange={(event) => setCity(event.target.value)} required /></div>
           <div><Label>Fotos entregues</Label><Input type="number" min={0} value={photos} onChange={(event) => setPhotos(event.target.value)} /></div>
+          <div><Label>Valor do negócio</Label><Input type="number" min={0} step="0.01" value={businessValue} onChange={(event) => setBusinessValue(event.target.value)} /></div>
+          <div>
+            <Label>Status financeiro</Label>
+            <Select value={paymentStatus} onValueChange={setPaymentStatus}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending">Pendente</SelectItem>
+                <SelectItem value="paid">Pago</SelectItem>
+                <SelectItem value="canceled">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div><Label>Observações</Label><Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} /></div>
         <DialogFooter><Button type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</Button></DialogFooter>

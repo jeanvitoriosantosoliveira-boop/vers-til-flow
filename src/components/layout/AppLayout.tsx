@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase, Camera, Target, CalendarDays } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase, Camera, Target, CalendarDays, ClipboardList } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -36,6 +36,7 @@ const nav: NavItem[] = [
   { to: "/studio/dashboard", label: "Dashboard Studio", icon: LayoutDashboard, end: true, roles: ["studio"] },
   { to: "/studio/clients", label: "Clientes Studio", icon: Users, roles: ["studio"] },
   { to: "/studio/shoots", label: "Ensaios", icon: Camera, roles: ["studio"] },
+  { to: "/studio/follow-ups", label: "Follow Up", icon: ClipboardList, roles: ["studio"] },
   { to: "/studio", label: "Financeiro Studio", icon: Wallet, roles: ["studio"] },
 ];
 

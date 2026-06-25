@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,9 +21,14 @@ type StudioClient = {
   phone: string | null;
   address: string | null;
   city: string;
+  shoot_type: StudioShootType | null;
+  status: StudioClientStatus;
+  business_value: number | null;
   notes: string | null;
   created_by?: string | null;
 };
+
+type StudioClientStatus = "lead" | "budget" | "active" | "completed" | "archived";
 
 type StudioShootType =
   | "casal" | "gestante" | "corporativo" | "individual" | "familia" | "casamento"
@@ -45,12 +51,26 @@ const SHOOT_TYPES: Array<{ value: "all" | StudioShootType; label: string }> = [
   { value: "produto", label: "Produto" },
 ];
 
+const SHOOT_TYPE_LABELS = Object.fromEntries(SHOOT_TYPES.map((type) => [type.value, type.label])) as Record<string, string>;
+
+const STATUS_OPTIONS: Array<{ value: "all" | StudioClientStatus; label: string }> = [
+  { value: "all", label: "Todos os status" },
+  { value: "lead", label: "Lead" },
+  { value: "budget", label: "Orçamento" },
+  { value: "active", label: "Cliente ativo" },
+  { value: "completed", label: "Concluído" },
+  { value: "archived", label: "Arquivado" },
+];
+
+const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS.map((status) => [status.value, status.label])) as Record<string, string>;
+
 export default function StudioClients() {
   const { user } = useAuth();
   const [clients, setClients] = useState<StudioClient[]>([]);
   const [shootClientIds, setShootClientIds] = useState<Set<string>>(new Set());
   const [cityFilter, setCityFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState<"all" | StudioShootType>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | StudioClientStatus>("all");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<StudioClient | null>(null);
   const [waOpen, setWaOpen] = useState(false);
@@ -99,7 +119,8 @@ export default function StudioClients() {
 
   const filtered = clients.filter((client) => {
     if (cityFilter !== "all" && client.city !== cityFilter) return false;
-    if (typeFilter !== "all" && !shootClientIds.has(client.id)) return false;
+    if (typeFilter !== "all" && client.shoot_type !== typeFilter && !shootClientIds.has(client.id)) return false;
+    if (statusFilter !== "all" && client.status !== statusFilter) return false;
     return true;
   });
 
@@ -154,7 +175,7 @@ export default function StudioClients() {
         </Dialog>
       </div>
 
-      <Card className="p-4 grid sm:grid-cols-3 gap-3">
+      <Card className="p-4 grid sm:grid-cols-4 gap-3">
         <div>
           <Label>Cidade</Label>
           <Select value={cityFilter} onValueChange={setCityFilter}>
@@ -171,6 +192,15 @@ export default function StudioClients() {
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {SHOOT_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Status</Label>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | StudioClientStatus)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -200,9 +230,18 @@ export default function StudioClients() {
               </div>
             </div>
             <div className="text-xs space-y-0.5 text-muted-foreground">
+              <div className="flex flex-wrap gap-2 pb-1">
+                <Badge variant="secondary">{STATUS_LABELS[client.status] ?? client.status}</Badge>
+                {client.business_value !== null && (
+                  <Badge variant="outline">
+                    R$ {Number(client.business_value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </Badge>
+                )}
+              </div>
               {client.phone && <p>Telefone: {client.phone}</p>}
               {client.email && <p>Email: {client.email}</p>}
               {client.cpf && <p>CPF: {client.cpf}</p>}
+              {client.shoot_type && <p>Tipo já realizado: {SHOOT_TYPE_LABELS[client.shoot_type] ?? client.shoot_type}</p>}
             </div>
             {client.phone && (
               <Button size="sm" variant="outline" className="w-full gap-2" onClick={() => openWhatsApp(client)}>
@@ -238,6 +277,9 @@ function ClientFormDialog({ editing, onSaved, userId }: { editing: StudioClient 
   const [phone, setPhone] = useState(editing?.phone ?? "");
   const [address, setAddress] = useState(editing?.address ?? "");
   const [city, setCity] = useState(editing?.city ?? "");
+  const [shootType, setShootType] = useState<"none" | StudioShootType>(editing?.shoot_type ?? "none");
+  const [status, setStatus] = useState<StudioClientStatus>(editing?.status ?? "lead");
+  const [businessValue, setBusinessValue] = useState(editing?.business_value ? String(editing.business_value) : "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [busy, setBusy] = useState(false);
 
@@ -248,6 +290,9 @@ function ClientFormDialog({ editing, onSaved, userId }: { editing: StudioClient 
     setPhone(editing?.phone ?? "");
     setAddress(editing?.address ?? "");
     setCity(editing?.city ?? "");
+    setShootType(editing?.shoot_type ?? "none");
+    setStatus(editing?.status ?? "lead");
+    setBusinessValue(editing?.business_value ? String(editing.business_value) : "");
     setNotes(editing?.notes ?? "");
   }, [editing]);
 
@@ -266,6 +311,9 @@ function ClientFormDialog({ editing, onSaved, userId }: { editing: StudioClient 
       phone: phone.trim() || null,
       address: address.trim() || null,
       city: city.trim(),
+      shoot_type: shootType === "none" ? null : shootType,
+      status,
+      business_value: businessValue ? Number(businessValue) : null,
       notes: notes.trim() || null,
     };
 
@@ -290,6 +338,30 @@ function ClientFormDialog({ editing, onSaved, userId }: { editing: StudioClient 
           <div><Label>Telefone com DDD</Label><Input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="55 45 99999-9999" /></div>
           <div className="sm:col-span-2"><Label>Endereço</Label><Input value={address} onChange={(event) => setAddress(event.target.value)} /></div>
           <div><Label>Cidade*</Label><Input value={city} onChange={(event) => setCity(event.target.value)} required /></div>
+          <div>
+            <Label>Status do cliente*</Label>
+            <Select value={status} onValueChange={(value) => setStatus(value as StudioClientStatus)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.filter((item) => item.value !== "all").map((item) => (
+                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Tipo de ensaio já realizado</Label>
+            <Select value={shootType} onValueChange={(value) => setShootType(value as "none" | StudioShootType)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhum ainda</SelectItem>
+                {SHOOT_TYPES.filter((type) => type.value !== "all").map((type) => (
+                  <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div><Label>Valor do negócio</Label><Input type="number" min={0} step="0.01" value={businessValue} onChange={(event) => setBusinessValue(event.target.value)} /></div>
         </div>
         <div><Label>Observações</Label><Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} /></div>
         <DialogFooter><Button type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</Button></DialogFooter>

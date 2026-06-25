@@ -685,6 +685,7 @@ export type Database = {
       studio_clients: {
         Row: {
           address: string | null
+          business_value: number | null
           city: string
           cpf: string | null
           created_at: string
@@ -694,10 +695,13 @@ export type Database = {
           id: string
           notes: string | null
           phone: string | null
+          shoot_type: Database["public"]["Enums"]["studio_shoot_type"] | null
+          status: string
           updated_at: string
         }
         Insert: {
           address?: string | null
+          business_value?: number | null
           city: string
           cpf?: string | null
           created_at?: string
@@ -707,10 +711,13 @@ export type Database = {
           id?: string
           notes?: string | null
           phone?: string | null
+          shoot_type?: Database["public"]["Enums"]["studio_shoot_type"] | null
+          status?: string
           updated_at?: string
         }
         Update: {
           address?: string | null
+          business_value?: number | null
           city?: string
           cpf?: string | null
           created_at?: string
@@ -720,11 +727,69 @@ export type Database = {
           id?: string
           notes?: string | null
           phone?: string | null
+          shoot_type?: Database["public"]["Enums"]["studio_shoot_type"] | null
+          status?: string
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "studio_clients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studio_followups: {
+        Row: {
+          city: string
+          created_at: string
+          created_by: string | null
+          desired_shoot_type: Database["public"]["Enums"]["studio_shoot_type"]
+          email: string | null
+          estimated_value: number | null
+          follow_up_date: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          phone: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          created_by?: string | null
+          desired_shoot_type: Database["public"]["Enums"]["studio_shoot_type"]
+          email?: string | null
+          estimated_value?: number | null
+          follow_up_date?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          created_by?: string | null
+          desired_shoot_type?: Database["public"]["Enums"]["studio_shoot_type"]
+          email?: string | null
+          estimated_value?: number | null
+          follow_up_date?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_followups_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -841,36 +906,42 @@ export type Database = {
       }
       studio_shoots: {
         Row: {
+          business_value: number
           city: string
           client_id: string
           created_at: string
           created_by: string | null
           id: string
           notes: string | null
+          payment_status: string
           photos_delivered: number
           shoot_date: string | null
           shoot_type: Database["public"]["Enums"]["studio_shoot_type"]
           updated_at: string
         }
         Insert: {
+          business_value?: number
           city: string
           client_id: string
           created_at?: string
           created_by?: string | null
           id?: string
           notes?: string | null
+          payment_status?: string
           photos_delivered?: number
           shoot_date?: string | null
           shoot_type: Database["public"]["Enums"]["studio_shoot_type"]
           updated_at?: string
         }
         Update: {
+          business_value?: number
           city?: string
           client_id?: string
           created_at?: string
           created_by?: string | null
           id?: string
           notes?: string | null
+          payment_status?: string
           photos_delivered?: number
           shoot_date?: string | null
           shoot_type?: Database["public"]["Enums"]["studio_shoot_type"]

@@ -7,7 +7,6 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -15,16 +14,12 @@ Deno.serve(async (req) => {
     }
 
     const jwt = authHeader.substring(7);
-    const userClient = createClient(SUPABASE_URL, ANON, {
-      global: { headers: { Authorization: `Bearer ${jwt}` } },
-    });
-
-    const { data: { user: caller }, error: authError } = await userClient.auth.getUser();
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+    const { data: { user: caller }, error: authError } = await admin.auth.getUser(jwt);
     if (authError || !caller) {
       return json({ error: 'Sessão inválida ou expirada' }, 401);
     }
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: callerRoles, error: rolesError } = await admin
       .from('user_roles')
       .select('role')

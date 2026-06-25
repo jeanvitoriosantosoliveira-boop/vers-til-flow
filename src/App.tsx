@@ -27,6 +27,7 @@ import Studio from "./pages/Studio";
 import StudioClients from "./pages/StudioClients";
 import StudioShoots from "./pages/StudioShoots";
 import StudioDashboard from "./pages/StudioDashboard";
+import StudioFollowUps from "./pages/StudioFollowUps";
 import Services from "./pages/Services";
 import SalesFunnel from "./pages/SalesFunnel";
 import SalesAgenda from "./pages/SalesAgenda";
@@ -83,6 +84,7 @@ const App = () => (
                       <Route path="/studio/dashboard" element={<StudioDashboard />} />
                       <Route path="/studio/clients" element={<StudioClients />} />
                       <Route path="/studio/shoots" element={<StudioShoots />} />
+                      <Route path="/studio/follow-ups" element={<StudioFollowUps />} />
                       <Route path="/sales" element={<SalesFunnel />} />
                       <Route path="/sales/agenda" element={<SalesAgenda />} />
                       <Route path="/sales/dashboard" element={<SalesDashboard />} />
