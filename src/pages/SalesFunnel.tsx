@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, MessageCircle, Instagram, Phone, Calendar, Trash2, Pencil, Save, Clock } from "lucide-react";
+import { Plus, MessageCircle, Instagram, Phone, Calendar, Trash2, Pencil, Save, Clock, Search, X, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { PeriodFilter, type Period, inPeriod } from "@/components/PeriodFilter";
 
@@ -84,6 +84,7 @@ export default function SalesFunnel() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [ownerFilter, setOwnerFilter] = useState("mine");
   const [period, setPeriod] = useState<Period>({ preset: "all" });
+  const [search, setSearch] = useState("");
   const [stageForm, setStageForm] = useState<Partial<Stage> | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const isLeader = user?.role === "leader";
@@ -107,8 +108,8 @@ export default function SalesFunnel() {
       });
       setStages([...unique.values()].sort((a, b) => a.position - b.position));
     }
-    if (l.data) setLeads(l.data as any);
-    if (a.data) setActivities(a.data as any);
+    if (l.data) setLeads(l.data as Lead[]);
+    if (a.data) setActivities(a.data as Activity[]);
   }
   useEffect(() => { load(); }, [ownerFilter, user?.id, isLeader]);
 
@@ -127,6 +128,8 @@ export default function SalesFunnel() {
   const [openLead, setOpenLead] = useState<Lead | null>(null);
   const [leadDraft, setLeadDraft] = useState<Partial<Lead>>({});
   const [newActivity, setNewActivity] = useState<{ kind: string; body: string }>({ kind: "note", body: "" });
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [activityDraft, setActivityDraft] = useState<{ kind: string; body: string }>({ kind: "note", body: "" });
 
   function openLeadDialog(lead: Lead) {
     setOpenLead(lead);
@@ -137,12 +140,12 @@ export default function SalesFunnel() {
     const firstStage = stages.find(s => !s.is_won && !s.is_lost) ?? stages[0];
     const payload = {
       ...form,
-      name: form.name?.trim() || form.company?.trim() || form.email?.trim() || "Lead sem nome",
+      name: form.name?.trim() || form.company?.trim() || form.instagram?.trim() || "Lead sem nome",
       stage_id: form.stage_id || firstStage?.id,
       owner_id: form.owner_id || user?.id,
       estimated_value: Number(form.estimated_value || 0),
       time_spent_seconds: Number(form.time_spent_seconds || 0),
-    } as any;
+    };
     const { error } = await supabase.from("leads").insert(payload);
     if (error) return toast.error(error.message);
     toast.success("Lead criado");
@@ -177,11 +180,11 @@ export default function SalesFunnel() {
       next_followup_at: leadDraft.next_followup_at ?? null,
       time_spent_seconds: Number(leadDraft.time_spent_seconds || 0),
     };
-    const { data, error } = await supabase.from("leads").update(payload as any).eq("id", openLead.id).select().single();
+    const { data, error } = await supabase.from("leads").update(payload).eq("id", openLead.id).select().single();
     if (error) return toast.error(error.message);
-    setOpenLead(data as Lead);
-    setLeadDraft(data as Lead);
     toast.success("Lead salvo");
+    setOpenLead(null);
+    setLeadDraft({});
     load();
   }
   async function saveStage() {
@@ -217,6 +220,39 @@ export default function SalesFunnel() {
     setNewActivity({ kind: "note", body: "" });
     load();
   }
+
+  function startEditActivity(activity: Activity) {
+    setEditingActivityId(activity.id);
+    setActivityDraft({ kind: activity.kind, body: activity.body ?? "" });
+  }
+
+  function cancelEditActivity() {
+    setEditingActivityId(null);
+    setActivityDraft({ kind: "note", body: "" });
+  }
+
+  async function saveActivity(activityId: string) {
+    if (!activityDraft.body.trim()) return toast.error("Descreva a atividade");
+    const { error } = await supabase
+      .from("lead_activities")
+      .update({
+        kind: activityDraft.kind,
+        body: activityDraft.body.trim(),
+      })
+      .eq("id", activityId);
+    if (error) return toast.error(error.message);
+    toast.success("Atividade atualizada");
+    cancelEditActivity();
+    load();
+  }
+
+  async function deleteActivity(activityId: string) {
+    if (!confirm("Excluir esta atividade?")) return;
+    const { error } = await supabase.from("lead_activities").delete().eq("id", activityId);
+    if (error) return toast.error(error.message);
+    toast.success("Atividade excluída");
+    load();
+  }
   async function deleteLead() {
     if (!openLead) return;
     if (!confirm("Excluir lead?")) return;
@@ -225,6 +261,51 @@ export default function SalesFunnel() {
     load();
   }
 
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredLeads = useMemo(() => {
+    const byPeriod = leads.filter((lead) => period.preset === "all" || inPeriod(lead.updated_at ?? lead.created_at, period));
+    if (!normalizedSearch) return byPeriod;
+    return byPeriod.filter((lead) =>
+      [
+        lead.name,
+        lead.company,
+        lead.instagram,
+        lead.phone,
+        lead.whatsapp,
+        lead.niche,
+        lead.source,
+      ].some((value) => (value ?? "").toLowerCase().includes(normalizedSearch))
+    );
+  }, [leads, normalizedSearch, period]);
+  const possibleNewLeadDuplicates = useMemo(() => {
+    const terms = [
+      form.name,
+      form.company,
+      form.instagram,
+      form.phone,
+      form.whatsapp,
+    ]
+      .map((value) => value?.trim().toLowerCase())
+      .filter((value): value is string => !!value && value.length >= 3);
+
+    if (!terms.length) return [];
+
+    return leads
+      .filter((lead) => {
+        const values = [
+          lead.name,
+          lead.company,
+          lead.instagram,
+          lead.phone,
+          lead.whatsapp,
+        ]
+          .map((value) => value?.trim().toLowerCase() ?? "")
+          .filter((value) => value.length >= 3);
+
+        return terms.some((term) => values.some((value) => value.includes(term) || term.includes(value)));
+      })
+      .slice(0, 5);
+  }, [form.company, form.instagram, form.name, form.phone, form.whatsapp, leads]);
   const leadActivities = useMemo(() => openLead ? activities.filter(a => a.lead_id === openLead.id) : [], [openLead, activities]);
 
   return (
@@ -234,6 +315,15 @@ export default function SalesFunnel() {
         subtitle="Organize abordagens, follow-ups e fechamentos."
         actions={
           <div className="flex flex-wrap gap-2">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar lead no funil..."
+              className="h-9 w-[220px] pl-9"
+            />
+          </div>
           <PeriodFilter value={period} onChange={setPeriod} />
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
             <SelectTrigger className="w-[190px] h-9"><SelectValue /></SelectTrigger>
@@ -257,6 +347,32 @@ export default function SalesFunnel() {
                   <div><Label>Telefone</Label><Input value={form.phone ?? ""} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
                 </div>
                 <div><Label>Instagram</Label><Input value={form.instagram ?? ""} placeholder="@perfil ou link" onChange={e => setForm(f => ({ ...f, instagram: e.target.value }))} /></div>
+                {possibleNewLeadDuplicates.length > 0 && (
+                  <Card className="p-3 border-warning/50 bg-warning/10">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-warning mb-2">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Possíveis leads já cadastrados
+                    </div>
+                    <div className="space-y-2">
+                      {possibleNewLeadDuplicates.map((lead) => (
+                        <button
+                          key={lead.id}
+                          type="button"
+                          onClick={() => {
+                            setOpenNew(false);
+                            openLeadDialog(lead);
+                          }}
+                          className="w-full text-left rounded-md border border-border/60 bg-background/50 px-3 py-2 hover:bg-muted transition"
+                        >
+                          <p className="text-sm font-medium">{lead.name || lead.company || lead.instagram || "Lead sem nome"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {[lead.company, lead.instagram, lead.phone || lead.whatsapp].filter(Boolean).join(" · ")}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </Card>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <div><Label>Origem</Label><Input value={form.source ?? ""} onChange={e => setForm(f => ({ ...f, source: e.target.value }))} /></div>
                   <div><Label>Ticket estimado</Label><Input type="number" step="0.01" value={form.estimated_value ?? ""} onChange={e => setForm(f => ({ ...f, estimated_value: Number(e.target.value) }))} /></div>
@@ -297,7 +413,7 @@ export default function SalesFunnel() {
         <div className="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2">
           {stages.map(s => (
             <div key={s.id} className="relative group">
-              <StageColumn stage={s} leads={leads.filter(l => l.stage_id === s.id && (period.preset === "all" || inPeriod(l.updated_at ?? l.created_at, period)))} onCardClick={openLeadDialog} />
+              <StageColumn stage={s} leads={filteredLeads.filter(l => l.stage_id === s.id)} onCardClick={openLeadDialog} />
               {isLeader && (
                 <div className="absolute top-2 right-2 hidden group-hover:flex gap-1">
                   {!s.is_won && <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStageForm(s)}><Pencil className="w-3 h-3" /></Button>}
@@ -373,8 +489,34 @@ export default function SalesFunnel() {
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {leadActivities.map(a => (
                     <div key={a.id} className="text-xs bg-muted/40 p-2 rounded flex justify-between gap-2">
-                      <div><Badge variant="outline" className="mr-2 text-[10px]">{a.kind}</Badge>{a.body}</div>
-                      <span className="text-muted-foreground shrink-0">{new Date(a.occurred_at).toLocaleString("pt-BR")}</span>
+                      {editingActivityId === a.id ? (
+                        <div className="flex-1 grid gap-2 sm:grid-cols-[130px_1fr_auto]">
+                          <Select value={activityDraft.kind} onValueChange={v => setActivityDraft(draft => ({ ...draft, kind: v }))}>
+                            <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="note">Nota</SelectItem>
+                              <SelectItem value="call">Ligação</SelectItem>
+                              <SelectItem value="instagram">Instagram</SelectItem>
+                              <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                              <SelectItem value="meeting">Reunião</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input value={activityDraft.body} onChange={e => setActivityDraft(draft => ({ ...draft, body: e.target.value }))} className="h-8" />
+                          <div className="flex gap-1">
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => saveActivity(a.id)} title="Salvar atividade"><Save className="w-3.5 h-3.5" /></Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={cancelEditActivity} title="Cancelar"><X className="w-3.5 h-3.5" /></Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div><Badge variant="outline" className="mr-2 text-[10px]">{a.kind}</Badge>{a.body}</div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-muted-foreground">{new Date(a.occurred_at).toLocaleString("pt-BR")}</span>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditActivity(a)} title="Editar atividade"><Pencil className="w-3 h-3" /></Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deleteActivity(a.id)} title="Excluir atividade"><Trash2 className="w-3 h-3 text-destructive" /></Button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                   {leadActivities.length === 0 && <p className="text-xs text-muted-foreground">Sem atividades</p>}

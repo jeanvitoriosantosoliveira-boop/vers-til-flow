@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase, Camera, Target, CalendarDays } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, BarChart3, Users, UserCog, Timer, Search, Moon, Sun, Database, Sparkles, LogOut, Wallet, Network, UserCircle2, Menu, UserPlus, Briefcase, Camera, Target, CalendarDays, ClipboardList } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Logo } from "@/components/Logo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -13,7 +13,7 @@ import { useSearch } from "@/context/SearchContext";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-type NavItem = { to: string; label: string; icon: any; end?: boolean; roles: Array<"leader"|"manager"|"collaborator"|"commercial"> };
+type NavItem = { to: string; label: string; icon: any; end?: boolean; roles: Array<"leader"|"manager"|"collaborator"|"commercial"|"studio"> };
 
 const nav: NavItem[] = [
   // Operacional
@@ -26,13 +26,18 @@ const nav: NavItem[] = [
   { to: "/teams", label: "Times", icon: Network, roles: ["leader","manager"] },
   { to: "/services", label: "Serviços", icon: Briefcase, roles: ["leader"] },
   { to: "/finance", label: "Financeiro", icon: Wallet, roles: ["leader"] },
-  { to: "/studio", label: "Studio", icon: Camera, roles: ["leader"] },
   { to: "/time", label: "Tempo", icon: Timer, roles: ["leader","manager","collaborator"] },
   // Comercial
   { to: "/sales/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["commercial"] },
   { to: "/sales", label: "Funil de Vendas", icon: Target, roles: ["commercial","leader","manager"] },
   { to: "/leads", label: "Leads", icon: Target, roles: ["commercial","leader","manager"] },
   { to: "/sales/agenda", label: "Agenda", icon: CalendarDays, roles: ["commercial","leader","manager"] },
+  // Studio Fotográfico
+  { to: "/studio/dashboard", label: "Dashboard Studio", icon: LayoutDashboard, end: true, roles: ["studio"] },
+  { to: "/studio/clients", label: "Clientes Studio", icon: Users, roles: ["studio"] },
+  { to: "/studio/shoots", label: "Ensaios", icon: Camera, roles: ["studio"] },
+  { to: "/studio/follow-ups", label: "Follow Up", icon: ClipboardList, roles: ["studio"] },
+  { to: "/studio", label: "Financeiro Studio", icon: Wallet, roles: ["studio"] },
 ];
 
 export function AppLayout() {
@@ -64,9 +69,10 @@ export function AppLayout() {
         <nav className="space-y-1 flex-1">
           {nav.filter(n => {
             const r = currentUser.role as any;
-            const role: "leader"|"manager"|"collaborator"|"commercial" =
+            const role: "leader"|"manager"|"collaborator"|"commercial"|"studio" =
               r === "leader" ? "leader"
               : r === "commercial" ? "commercial"
+              : r === "studio" ? "studio"
               : currentUser.is_manager ? "manager"
               : "collaborator";
             return n.roles.includes(role);
@@ -132,7 +138,7 @@ export function AppLayout() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <Badge variant="outline" className="hidden md:inline-flex gap-1 border-accent/40 text-accent">
-              <Sparkles className="w-3 h-3" /> {currentUser.role === "leader" ? "Líder" : (currentUser as any).role === "commercial" ? "Comercial" : currentUser.is_manager ? "Gerente" : "Colaborador"}
+              <Sparkles className="w-3 h-3" /> {currentUser.role === "leader" ? "Líder" : (currentUser as any).role === "commercial" ? "Comercial" : (currentUser as any).role === "studio" ? "Studio" : currentUser.is_manager ? "Gerente" : "Colaborador"}
             </Badge>
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Alternar tema">
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

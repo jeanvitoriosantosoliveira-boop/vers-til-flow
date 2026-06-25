@@ -24,6 +24,10 @@ import TimeTracking from "./pages/TimeTracking";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import Studio from "./pages/Studio";
+import StudioClients from "./pages/StudioClients";
+import StudioShoots from "./pages/StudioShoots";
+import StudioDashboard from "./pages/StudioDashboard";
+import StudioFollowUps from "./pages/StudioFollowUps";
 import Services from "./pages/Services";
 import SalesFunnel from "./pages/SalesFunnel";
 import SalesAgenda from "./pages/SalesAgenda";
@@ -44,6 +48,7 @@ function Protected({ children }: { children: ReactNode }) {
 function HomeRoute() {
   const { user } = useAuth();
   if (user?.role === "commercial") return <Navigate to="/sales/dashboard" replace />;
+  if (user?.role === "studio") return <Navigate to="/studio/dashboard" replace />;
   return <Dashboard />;
 }
 
@@ -76,6 +81,10 @@ const App = () => (
                       <Route path="/time" element={<TimeTracking />} />
                       <Route path="/profile" element={<Profile />} />
                       <Route path="/studio" element={<Studio />} />
+                      <Route path="/studio/dashboard" element={<StudioDashboard />} />
+                      <Route path="/studio/clients" element={<StudioClients />} />
+                      <Route path="/studio/shoots" element={<StudioShoots />} />
+                      <Route path="/studio/follow-ups" element={<StudioFollowUps />} />
                       <Route path="/sales" element={<SalesFunnel />} />
                       <Route path="/sales/agenda" element={<SalesAgenda />} />
                       <Route path="/sales/dashboard" element={<SalesDashboard />} />

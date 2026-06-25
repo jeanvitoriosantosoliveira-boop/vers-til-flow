@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { supabase } from "@/integrations/supabase/client";
 import type { Session, User as SupaUser } from "@supabase/supabase-js";
 
-export type AppRole = "leader" | "manager" | "collaborator" | "commercial";
+export type AppRole = "leader" | "manager" | "collaborator" | "commercial" | "studio";
 
 export interface AuthUser {
   id: string;
@@ -14,6 +14,7 @@ export interface AuthUser {
   is_manager: boolean;
   is_leader: boolean;
   is_commercial: boolean;
+  is_studio: boolean;
 }
 
 interface AuthState {
@@ -39,6 +40,8 @@ async function loadAppUser(supaUser: SupaUser): Promise<AuthUser> {
     ? "manager"
     : roleList.includes("commercial")
     ? "commercial"
+    : roleList.includes("studio")
+    ? "studio"
     : "collaborator";
   return {
     id: supaUser.id,
@@ -50,6 +53,7 @@ async function loadAppUser(supaUser: SupaUser): Promise<AuthUser> {
     is_leader: role === "leader",
     is_manager: role === "manager" || role === "leader",
     is_commercial: role === "commercial",
+    is_studio: role === "studio",
   };
 }
 
