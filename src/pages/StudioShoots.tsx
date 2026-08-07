@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StudioMonthFilter } from "@/components/StudioMonthFilter";
+import { isInStudioMonth, useStudioMonth } from "@/lib/studioMonth";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -63,6 +65,7 @@ export default function StudioShoots() {
   const [clients, setClients] = useState<Client[]>([]);
   const [cityFilter, setCityFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState<"all" | StudioShootType>("all");
+  const [month, setMonth] = useStudioMonth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Shoot | null>(null);
 
@@ -92,6 +95,7 @@ export default function StudioShoots() {
   );
   const clientMap = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
   const filtered = shoots.filter((shoot) =>
+    isInStudioMonth(shoot.shoot_date, month) &&
     (cityFilter === "all" || shoot.city === cityFilter) &&
     (typeFilter === "all" || shoot.shoot_type === typeFilter)
   );
@@ -132,7 +136,9 @@ export default function StudioShoots() {
         </Dialog>
       </div>
 
-      <Card className="p-4 grid sm:grid-cols-2 gap-3">
+      <Card className="p-4 space-y-4">
+        <StudioMonthFilter value={month} onChange={setMonth} />
+        <div className="grid sm:grid-cols-2 gap-3">
         <div>
           <Label>Cidade</Label>
           <Select value={cityFilter} onValueChange={setCityFilter}>
@@ -152,6 +158,7 @@ export default function StudioShoots() {
               {SHOOT_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
         </div>
       </Card>
 

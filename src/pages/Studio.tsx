@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StudioMonthFilter } from "@/components/StudioMonthFilter";
+import { isInStudioMonth, useStudioMonth } from "@/lib/studioMonth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Clock, Music2, Plus, Trash2, TrendingDown, TrendingUp, Wallet } from "lucide-react";
@@ -66,6 +68,7 @@ export default function Studio() {
   const [shoots, setShoots] = useState<StudioShoot[]>([]);
   const [expenses, setExpenses] = useState<SExpense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useStudioMonth();
 
   async function load() {
     setLoading(true);
@@ -89,11 +92,19 @@ export default function Studio() {
     () => Array.from(new Set(clients.map((client) => client.city).filter(Boolean))).sort(),
     [clients],
   );
-  const totalRevenue = useMemo(() => shoots.filter(s => s.payment_status === "paid").reduce((a, s) => a + Number(s.business_value || 0), 0), [shoots]);
-  const pendingRevenue = useMemo(() => shoots.filter(s => s.payment_status === "pending").reduce((a, s) => a + Number(s.business_value || 0), 0), [shoots]);
-  const totalExpenses = useMemo(() => expenses.reduce((a, e) => a + Number(e.amount || 0), 0), [expenses]);
+  const filteredShoots = useMemo(
+    () => shoots.filter((shoot) => isInStudioMonth(shoot.shoot_date, month)),
+    [month, shoots],
+  );
+  const filteredExpenses = useMemo(
+    () => expenses.filter((expense) => isInStudioMonth(expense.occurred_on, month)),
+    [expenses, month],
+  );
+  const totalRevenue = useMemo(() => filteredShoots.filter(s => s.payment_status === "paid").reduce((a, s) => a + Number(s.business_value || 0), 0), [filteredShoots]);
+  const pendingRevenue = useMemo(() => filteredShoots.filter(s => s.payment_status === "pending").reduce((a, s) => a + Number(s.business_value || 0), 0), [filteredShoots]);
+  const totalExpenses = useMemo(() => filteredExpenses.reduce((a, e) => a + Number(e.amount || 0), 0), [filteredExpenses]);
   const profit = totalRevenue - totalExpenses;
-  const totalSessions = shoots.length;
+  const totalSessions = filteredShoots.length;
 
   const [openSession, setOpenSession] = useState(false);
   const [sessionForm, setSessionForm] = useState({
@@ -221,6 +232,10 @@ export default function Studio() {
         }
       />
 
+      <Card className="p-4 mb-6">
+        <StudioMonthFilter value={month} onChange={setMonth} />
+      </Card>
+
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <Card className="p-4"><div className="text-xs text-muted-foreground flex items-center gap-1"><Music2 className="w-3 h-3" /> Ensaios</div><p className="font-display text-2xl font-bold mt-2">{totalSessions}</p></Card>
         <Card className="p-4"><div className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Recebido</div><p className="font-display text-2xl font-bold mt-2 text-success">{BRL(totalRevenue)}</p></Card>
@@ -238,8 +253,8 @@ export default function Studio() {
               <thead className="text-xs uppercase text-muted-foreground"><tr><th className="text-left py-2">Data</th><th className="text-left">Tipo</th><th className="text-left">Cliente</th><th className="text-right">Fotos</th><th className="text-right">Valor</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 {loading && <tr><td colSpan={7} className="text-center py-6 text-muted-foreground">Carregando…</td></tr>}
-                {!loading && shoots.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-muted-foreground">Nenhum negócio cadastrado</td></tr>}
-                {shoots.map(s => {
+                {!loading && filteredShoots.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-muted-foreground">Nenhum negócio encontrado no período</td></tr>}
+                {filteredShoots.map(s => {
                   const client = clientMap.get(s.client_id);
                   return (
                   <tr key={s.id} className="border-t border-border">
@@ -280,8 +295,8 @@ export default function Studio() {
             <table className="w-full text-sm">
               <thead className="text-xs uppercase text-muted-foreground"><tr><th className="text-left py-2">Data</th><th className="text-left">Título</th><th className="text-left">Categoria</th><th className="text-right">Valor</th><th></th></tr></thead>
               <tbody>
-                {!loading && expenses.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">Nenhuma despesa</td></tr>}
-                {expenses.map(e => (
+                {!loading && filteredExpenses.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">Nenhuma despesa encontrada no período</td></tr>}
+                {filteredExpenses.map(e => (
                   <tr key={e.id} className="border-t border-border">
                     <td className="py-2">{new Date(e.occurred_on).toLocaleDateString("pt-BR")}</td>
                     <td>{e.title}</td>

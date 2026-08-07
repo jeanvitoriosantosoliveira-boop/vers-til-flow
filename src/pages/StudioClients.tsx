@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StudioMonthFilter } from "@/components/StudioMonthFilter";
+import { isInStudioMonth, useStudioMonth } from "@/lib/studioMonth";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,6 +28,7 @@ type StudioClient = {
   business_value: number | null;
   notes: string | null;
   created_by?: string | null;
+  created_at: string;
 };
 
 type StudioClientStatus = "lead" | "budget" | "active" | "completed" | "archived";
@@ -71,6 +74,7 @@ export default function StudioClients() {
   const [cityFilter, setCityFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState<"all" | StudioShootType>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | StudioClientStatus>("all");
+  const [month, setMonth] = useStudioMonth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<StudioClient | null>(null);
   const [waOpen, setWaOpen] = useState(false);
@@ -118,6 +122,7 @@ export default function StudioClients() {
   );
 
   const filtered = clients.filter((client) => {
+    if (!isInStudioMonth(client.created_at, month)) return false;
     if (cityFilter !== "all" && client.city !== cityFilter) return false;
     if (typeFilter !== "all" && client.shoot_type !== typeFilter && !shootClientIds.has(client.id)) return false;
     if (statusFilter !== "all" && client.status !== statusFilter) return false;
@@ -175,7 +180,9 @@ export default function StudioClients() {
         </Dialog>
       </div>
 
-      <Card className="p-4 grid sm:grid-cols-4 gap-3">
+      <Card className="p-4 space-y-4">
+        <StudioMonthFilter value={month} onChange={setMonth} />
+        <div className="grid sm:grid-cols-4 gap-3">
         <div>
           <Label>Cidade</Label>
           <Select value={cityFilter} onValueChange={setCityFilter}>
@@ -209,6 +216,7 @@ export default function StudioClients() {
             <Search className="w-3 h-3 inline mr-1" />
             {filtered.length} cliente(s)
           </p>
+        </div>
         </div>
       </Card>
 

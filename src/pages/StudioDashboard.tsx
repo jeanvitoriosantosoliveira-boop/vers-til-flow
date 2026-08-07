@@ -3,11 +3,14 @@ import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/ui/card";
+import { StudioMonthFilter } from "@/components/StudioMonthFilter";
+import { isInStudioMonth, useStudioMonth } from "@/lib/studioMonth";
 import { Camera, MapPin, TrendingUp, Users } from "lucide-react";
 
 type StudioClientSummary = {
   id: string;
   city: string;
+  created_at: string;
 };
 
 type StudioShootSummary = {
@@ -15,6 +18,7 @@ type StudioShootSummary = {
   shoot_type: string;
   city: string;
   photos_delivered: number;
+  shoot_date: string | null;
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -37,12 +41,13 @@ export default function StudioDashboard() {
   const { user } = useAuth();
   const [clients, setClients] = useState<StudioClientSummary[]>([]);
   const [shoots, setShoots] = useState<StudioShootSummary[]>([]);
+  const [month, setMonth] = useStudioMonth();
 
   useEffect(() => {
     async function load() {
       const [clientsResult, shootsResult] = await Promise.all([
-        supabase.from("studio_clients").select("id, city"),
-        supabase.from("studio_shoots").select("id, shoot_type, city, photos_delivered"),
+        supabase.from("studio_clients").select("id, city, created_at"),
+        supabase.from("studio_shoots").select("id, shoot_type, city, photos_delivered, shoot_date"),
       ]);
 
       setClients((clientsResult.data ?? []) as StudioClientSummary[]);
@@ -52,25 +57,34 @@ export default function StudioDashboard() {
     load();
   }, []);
 
+  const filteredClients = useMemo(
+    () => clients.filter((client) => isInStudioMonth(client.created_at, month)),
+    [clients, month],
+  );
+  const filteredShoots = useMemo(
+    () => shoots.filter((shoot) => isInStudioMonth(shoot.shoot_date, month)),
+    [shoots, month],
+  );
+
   const cityCount = useMemo(
-    () => clients.reduce<Record<string, number>>((acc, client) => {
+    () => filteredClients.reduce<Record<string, number>>((acc, client) => {
       acc[client.city] = (acc[client.city] ?? 0) + 1;
       return acc;
     }, {}),
-    [clients],
+    [filteredClients],
   );
 
   const typeCount = useMemo(
-    () => shoots.reduce<Record<string, number>>((acc, shoot) => {
+    () => filteredShoots.reduce<Record<string, number>>((acc, shoot) => {
       acc[shoot.shoot_type] = (acc[shoot.shoot_type] ?? 0) + 1;
       return acc;
     }, {}),
-    [shoots],
+    [filteredShoots],
   );
 
   const topCities = Object.entries(cityCount).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const topTypes = Object.entries(typeCount).sort((a, b) => b[1] - a[1]);
-  const totalPhotos = shoots.reduce((sum, shoot) => sum + (shoot.photos_delivered ?? 0), 0);
+  const totalPhotos = filteredShoots.reduce((sum, shoot) => sum + (shoot.photos_delivered ?? 0), 0);
 
   if (user?.role !== "studio") return <Navigate to="/" replace />;
 
@@ -81,14 +95,18 @@ export default function StudioDashboard() {
         <p className="text-sm text-muted-foreground">Visão geral dos clientes, cidades e ensaios realizados.</p>
       </div>
 
+      <Card className="p-4">
+        <StudioMonthFilter value={month} onChange={setMonth} />
+      </Card>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card className="p-4">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Users className="w-3 h-3" /> Clientes</div>
-          <p className="text-2xl font-bold">{clients.length}</p>
+          <p className="text-2xl font-bold">{filteredClients.length}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Camera className="w-3 h-3" /> Ensaios</div>
-          <p className="text-2xl font-bold">{shoots.length}</p>
+          <p className="text-2xl font-bold">{filteredShoots.length}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><TrendingUp className="w-3 h-3" /> Fotos entregues</div>

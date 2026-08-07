@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StudioMonthFilter } from "@/components/StudioMonthFilter";
+import { isInStudioMonth, useStudioMonth } from "@/lib/studioMonth";
 import { Textarea } from "@/components/ui/textarea";
 import { CalendarClock, MessageCircle, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -68,6 +70,7 @@ export default function StudioFollowUps() {
   const [cityFilter, setCityFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState<"all" | StudioShootType>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | FollowUpStatus>("all");
+  const [month, setMonth] = useStudioMonth();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<StudioFollowUp | null>(null);
@@ -100,6 +103,7 @@ export default function StudioFollowUps() {
 
   const filtered = followUps.filter((item) => {
     const term = search.trim().toLowerCase();
+    if (!isInStudioMonth(item.follow_up_date, month)) return false;
     if (cityFilter !== "all" && item.city !== cityFilter) return false;
     if (typeFilter !== "all" && item.desired_shoot_type !== typeFilter) return false;
     if (statusFilter !== "all" && item.status !== statusFilter) return false;
@@ -160,7 +164,9 @@ export default function StudioFollowUps() {
         </Dialog>
       </div>
 
-      <Card className="p-4 grid sm:grid-cols-4 gap-3">
+      <Card className="p-4 space-y-4">
+        <StudioMonthFilter value={month} onChange={setMonth} />
+        <div className="grid sm:grid-cols-4 gap-3">
         <div>
           <Label>Buscar</Label>
           <div className="relative">
@@ -195,6 +201,7 @@ export default function StudioFollowUps() {
               {STATUS_OPTIONS.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
         </div>
       </Card>
 
