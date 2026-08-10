@@ -316,7 +316,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
         </div>
 
         <DialogFooter className="gap-2">
-          {editing && (currentUser.role === "leader" || currentUser.role === "manager" || editing.assignee_id === currentUser.id || editing.created_by === currentUser.id) && (
+          {editing && (currentUser.is_manager || editing.assignee_id === currentUser.id || editing.created_by === currentUser.id) && (
             <Button variant="outline" onClick={async () => { setSaving(true); try { await deleteTask(editing.id); onOpenChange(false); } finally { setSaving(false); } }} className="mr-auto gap-2 text-destructive hover:text-destructive" disabled={saving}>
               <Trash2 className="w-3 h-3" /> Excluir
             </Button>

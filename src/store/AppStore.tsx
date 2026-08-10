@@ -495,44 +495,49 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [users, notifyUser, currentUser]);
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
-    let prevTask: Task | undefined;
+    const previous = tasks.find((task) => task.id === id);
+    if (!previous) {
+      const notFoundError = new Error("A tarefa não foi encontrada.");
+      toast.error(notFoundError.message);
+      throw notFoundError;
+    }
     const updatedAt = new Date().toISOString();
-    setTasks((prev) => prev.map((t) => {
-      if (t.id === id) { prevTask = t; return { ...t, ...patch, updated_at: updatedAt }; }
-      return t;
-    }));
+    setTasks((prev) => prev.map((task) =>
+      task.id === id ? { ...task, ...patch, updated_at: updatedAt } : task
+    ));
     const { data: savedTask, error } = await db
       .from("tasks")
       .update(taskToDb({ ...patch, updated_at: updatedAt }))
       .eq("id", id)
       .select()
       .maybeSingle();
-    if (error) {
-      if (prevTask) setTasks((prev) => prev.map((t) => t.id === id ? prevTask! : t));
-      toast.error("Erro ao atualizar tarefa: " + error.message);
-      throw error;
+    if (error || !savedTask) {
+      setTasks((prev) => prev.map((task) => task.id === id ? previous : task));
+      const persistenceError = error ?? new Error("A tarefa não foi encontrada ou você não tem permissão para alterá-la.");
+      toast.error("Erro ao atualizar tarefa: " + persistenceError.message);
+      throw persistenceError;
     }
-    if (savedTask) setTasks((prev) => prev.map((t) => t.id === id ? mapTask(savedTask) : t));
-    if (prevTask) {
-      const isStatus = patch.status && patch.status !== prevTask.status;
+    setTasks((prev) => prev.map((t) => t.id === id ? mapTask(savedTask) : t));
+    if (previous) {
+      const isStatus = patch.status && patch.status !== previous.status;
       void notifyUser({
         type: patch.status === "done" ? "task_done" : "task_updated",
         title: patch.status === "done" ? "Tarefa concluída" : "Tarefa atualizada",
-        body: `${prevTask.title}${isStatus ? ` → ${labelStatus(patch.status!)}` : ""}`,
-        user_id: prevTask.assignee_id ?? undefined,
+        body: `${previous.title}${isStatus ? ` → ${labelStatus(patch.status!)}` : ""}`,
+        user_id: previous.assignee_id ?? undefined,
       });
       // ----- Recorrência: ao concluir uma tarefa recorrente, agenda a próxima -----
-      if (patch.status === "done" && prevTask.status !== "done" && prevTask.recurrence && prevTask.recurrence.mode !== "none") {
-        const r = prevTask.recurrence;
+      if (patch.status === "done" && previous.status !== "done" && previous.recurrence && previous.recurrence.mode !== "none") {
+        const r = previous.recurrence;
         const interval = r.interval ?? 1;
-        const base = prevTask.due_date ? new Date(prevTask.due_date) : new Date();
+        const base = previous.due_date ? new Date(previous.due_date) : new Date();
         const next = new Date(base);
         if (r.mode === "hourly")  next.setHours(next.getHours() + interval);
         if (r.mode === "daily")   next.setDate(next.getDate() + interval);
         if (r.mode === "weekly")  next.setDate(next.getDate() + 7 * interval);
         if (r.mode === "monthly") next.setMonth(next.getMonth() + interval);
         const nt: Task = {
-          ...prevTask,
+          ...previous,
           id: uid(),
           status: "todo",
           column_id: null,
@@ -540,7 +545,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           due_date: next.toISOString(),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          recurrence: prevTask.recurrence,
+          recurrence: previous.recurrence,
         };
         setTasks(prev => [nt, ...prev]);
         void notifyUser({
@@ -551,7 +556,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  }, [notifyUser]);
+  }, [notifyUser, tasks]);
 
   const moveTask = useCallback(
     (id: string, target: { status?: TaskStatus; column_id?: string | null }) =>
@@ -562,11 +567,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const deleteTask = useCallback(async (id: string) => {
     const previous = tasks.find((t) => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    const { error } = await db.from("tasks").delete().eq("id", id);
-    if (error) {
+    const { data: deletedTask, error } = await db
+      .from("tasks")
+      .delete()
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
+    if (error || !deletedTask) {
       if (previous) setTasks((prev) => [previous, ...prev]);
-      toast.error("Erro ao excluir tarefa: " + error.message);
-      throw error;
+      const persistenceError = error ?? new Error("A tarefa não foi encontrada ou você não tem permissão para excluí-la.");
+      toast.error("Erro ao excluir tarefa: " + persistenceError.message);
+      throw persistenceError;
     }
   }, [tasks]);
 
