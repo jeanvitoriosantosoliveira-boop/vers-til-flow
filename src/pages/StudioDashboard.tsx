@@ -86,7 +86,7 @@ export default function StudioDashboard() {
   const topTypes = Object.entries(typeCount).sort((a, b) => b[1] - a[1]);
   const totalPhotos = filteredShoots.reduce((sum, shoot) => sum + (shoot.photos_delivered ?? 0), 0);
 
-  if (user?.role !== "studio") return <Navigate to="/" replace />;
+  if (user?.role !== "studio" && user?.role !== "leader") return <Navigate to="/" replace />;
 
   return (
     <div className="p-4 sm:p-6 space-y-6">

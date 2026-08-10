@@ -138,7 +138,7 @@ export default function StudioFollowUps() {
     load();
   }
 
-  if (user?.role !== "studio") return <Navigate to="/" replace />;
+  if (user?.role !== "studio" && user?.role !== "leader") return <Navigate to="/" replace />;
 
   return (
     <div className="p-4 sm:p-6 space-y-4">

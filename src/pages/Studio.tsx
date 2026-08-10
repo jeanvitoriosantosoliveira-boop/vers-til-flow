@@ -176,7 +176,7 @@ export default function Studio() {
   }
 
   if (!user) return null;
-  if (user.role !== "studio") return <Navigate to="/" replace />;
+  if (user.role !== "studio" && user.role !== "leader") return <Navigate to="/" replace />;
 
   return (
     <div className="max-w-7xl mx-auto p-4">

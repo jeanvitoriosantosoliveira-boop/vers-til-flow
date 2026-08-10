@@ -13,7 +13,7 @@ import { useSearch } from "@/context/SearchContext";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-type NavItem = { to: string; label: string; icon: any; end?: boolean; roles: Array<"leader"|"manager"|"collaborator"|"commercial"|"studio"> };
+type NavItem = { to: string; label: string; leaderLabel?: string; icon: any; end?: boolean; roles: Array<"leader"|"manager"|"collaborator"|"commercial"|"studio"> };
 
 const nav: NavItem[] = [
   // Operacional
@@ -33,11 +33,11 @@ const nav: NavItem[] = [
   { to: "/leads", label: "Leads", icon: Target, roles: ["commercial","leader","manager"] },
   { to: "/sales/agenda", label: "Agenda", icon: CalendarDays, roles: ["commercial","leader","manager"] },
   // Studio Fotográfico
-  { to: "/studio/dashboard", label: "Dashboard Studio", icon: LayoutDashboard, end: true, roles: ["studio"] },
-  { to: "/studio/clients", label: "Clientes Studio", icon: Users, roles: ["studio"] },
-  { to: "/studio/shoots", label: "Ensaios", icon: Camera, roles: ["studio"] },
-  { to: "/studio/follow-ups", label: "Follow Up", icon: ClipboardList, roles: ["studio"] },
-  { to: "/studio", label: "Financeiro Studio", icon: Wallet, roles: ["studio"] },
+  { to: "/studio/dashboard", label: "Dashboard Studio", leaderLabel: "Studio - Dashboard", icon: LayoutDashboard, end: true, roles: ["studio","leader"] },
+  { to: "/studio/clients", label: "Clientes Studio", leaderLabel: "Studio - Clientes", icon: Users, roles: ["studio","leader"] },
+  { to: "/studio/shoots", label: "Ensaios", leaderLabel: "Studio - Ensaios", icon: Camera, roles: ["studio","leader"] },
+  { to: "/studio/follow-ups", label: "Follow Up", leaderLabel: "Studio - Follow Up", icon: ClipboardList, roles: ["studio","leader"] },
+  { to: "/studio", label: "Financeiro Studio", leaderLabel: "Studio - Financeiro", icon: Wallet, roles: ["studio","leader"] },
 ];
 
 export function AppLayout() {
@@ -76,7 +76,7 @@ export function AppLayout() {
               : currentUser.is_manager ? "manager"
               : "collaborator";
             return n.roles.includes(role);
-          }).map(({ to, label, icon: Icon, end }) => (
+          }).map(({ to, label, leaderLabel, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -91,7 +91,7 @@ export function AppLayout() {
               }
             >
               <Icon className="w-4 h-4 shrink-0" />
-              {label}
+              {currentUser.role === "leader" && leaderLabel ? leaderLabel : label}
             </NavLink>
           ))}
         </nav>
