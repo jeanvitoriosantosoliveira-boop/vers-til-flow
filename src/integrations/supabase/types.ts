@@ -968,16 +968,20 @@ export type Database = {
         Row: {
           assignee_id: string | null
           client_id: string | null
+          column_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
           due_date: string | null
           id: string
+          is_template: boolean
+          last_spawn: string | null
           parent_task_id: string | null
           priority: Database["public"]["Enums"]["task_priority"]
           recurrence: Json | null
           status: Database["public"]["Enums"]["task_status"]
           team_id: string | null
+          template_id: string | null
           title: string
           total_seconds: number
           updated_at: string
@@ -985,16 +989,20 @@ export type Database = {
         Insert: {
           assignee_id?: string | null
           client_id?: string | null
+          column_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
+          is_template?: boolean
+          last_spawn?: string | null
           parent_task_id?: string | null
           priority?: Database["public"]["Enums"]["task_priority"]
           recurrence?: Json | null
           status?: Database["public"]["Enums"]["task_status"]
           team_id?: string | null
+          template_id?: string | null
           title: string
           total_seconds?: number
           updated_at?: string
@@ -1002,16 +1010,20 @@ export type Database = {
         Update: {
           assignee_id?: string | null
           client_id?: string | null
+          column_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
+          is_template?: boolean
+          last_spawn?: string | null
           parent_task_id?: string | null
           priority?: Database["public"]["Enums"]["task_priority"]
           recurrence?: Json | null
           status?: Database["public"]["Enums"]["task_status"]
           team_id?: string | null
+          template_id?: string | null
           title?: string
           total_seconds?: number
           updated_at?: string

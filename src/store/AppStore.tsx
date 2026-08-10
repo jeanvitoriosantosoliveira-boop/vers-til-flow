@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase as _supabase } from "@/integrations/supabase/client";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
@@ -303,6 +303,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [usingBackend, setUsingBackend] = useState(false);
   const [ready, setReady] = useState(false);
+  const recurrenceScanRunning = useRef(false);
 
   // Limpa LS antigo de tasks/clients quando Supabase está configurado
   useEffect(() => {
@@ -477,6 +478,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       total_seconds: 0,
       column_id: data.column_id ?? null,
       recurrence: data.recurrence ?? { mode: "none" },
+      is_template: data.is_template ?? false,
+      template_id: data.template_id ?? null,
+      last_spawn: data.last_spawn ?? null,
     };
     const { data: inserted, error } = await db.from("tasks").insert(taskToDb(newTask)).select().single();
     if (error) {
@@ -527,7 +531,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         user_id: previous.assignee_id ?? undefined,
       });
       // ----- Recorrência: ao concluir uma tarefa recorrente, agenda a próxima -----
-      if (patch.status === "done" && previous.status !== "done" && previous.recurrence && previous.recurrence.mode !== "none") {
+      if (
+        patch.status === "done"
+        && previous.status !== "done"
+        && !previous.is_template
+        && !previous.template_id
+        && previous.recurrence
+        && previous.recurrence.mode !== "none"
+      ) {
         const r = previous.recurrence;
         const interval = r.interval ?? 1;
         const base = previous.due_date ? new Date(previous.due_date) : new Date();
@@ -547,13 +558,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           updated_at: new Date().toISOString(),
           recurrence: previous.recurrence,
         };
-        setTasks(prev => [nt, ...prev]);
-        void notifyUser({
-          type: "task_created",
-          title: "Próxima ocorrência agendada",
-          body: `${nt.title} → ${next.toLocaleDateString("pt-BR")}`,
-          user_id: nt.assignee_id ?? undefined,
-        });
+        const { data: inserted, error } = await db
+          .from("tasks")
+          .insert(taskToDb(nt))
+          .select()
+          .maybeSingle();
+        if (error || !inserted) {
+          toast.error("Erro ao agendar próxima ocorrência: " + (error?.message ?? "registro não confirmado"));
+        } else {
+          setTasks((current) => [mapTask(inserted), ...current.filter((task) => task.id !== inserted.id)]);
+          void notifyUser({
+            type: "task_created",
+            title: "Próxima ocorrência agendada",
+            body: `${nt.title} → ${next.toLocaleDateString("pt-BR")}`,
+            user_id: nt.assignee_id ?? undefined,
+          });
+        }
       }
     }
   }, [notifyUser, tasks]);
@@ -861,40 +881,100 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   // ---------- Scheduler de recorrência ----------
   useEffect(() => {
-    function spawnDueOccurrences() {
-      const now = new Date();
-      let spawned: Task[] = [];
-      tasks.filter(t => t.is_template && t.recurrence && t.recurrence.mode !== "none").forEach(tpl => {
-        const occ = computeNextOccurrences(tpl, now);
-        occ.forEach(date => {
-          const sig = `${tpl.id}__${date.toISOString()}`;
-          // evita duplicar instâncias já criadas
-          const exists = tasks.some(x => x.template_id === tpl.id && x.due_date && Math.abs(new Date(x.due_date).getTime() - date.getTime()) < 60_000);
-          if (exists) return;
-          spawned.push({
-            ...tpl,
-            id: uid(),
-            is_template: false,
-            template_id: tpl.id,
-            status: "todo",
-            column_id: null,
-            total_seconds: 0,
-            due_date: date.toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            last_spawn: null,
+    if (!ready || !user?.id) return;
+
+    async function spawnDueOccurrences() {
+      if (recurrenceScanRunning.current) return;
+      recurrenceScanRunning.current = true;
+
+      try {
+        const now = new Date();
+        const persisted: Task[] = [];
+        const templates = tasks.filter(
+          (task) => task.is_template && task.recurrence && task.recurrence.mode !== "none"
+        );
+
+        for (const template of templates) {
+          const canPersist = currentUser.role === "leader"
+            || currentUser.role === "manager"
+            || template.created_by === currentUser.id
+            || template.assignee_id === currentUser.id;
+          if (!canPersist) continue;
+
+          const occurrences = computeNextOccurrences(template, now);
+          let lastProcessed: string | null = null;
+
+          for (const date of occurrences) {
+            const dueDate = date.toISOString();
+            const occurrence: Task = {
+              ...template,
+              id: uid(),
+              is_template: false,
+              template_id: template.id,
+              status: "todo",
+              column_id: null,
+              total_seconds: 0,
+              due_date: dueDate,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              recurrence: { mode: "none" },
+              last_spawn: null,
+            };
+            const { data: inserted, error } = await db
+              .from("tasks")
+              .insert(taskToDb(occurrence))
+              .select()
+              .maybeSingle();
+
+            if (error) {
+              if (error.code === "23505") {
+                lastProcessed = dueDate;
+                continue;
+              }
+              console.warn("Falha ao persistir ocorrência recorrente:", error.message);
+              break;
+            }
+
+            if (inserted) {
+              persisted.push(mapTask(inserted));
+              lastProcessed = dueDate;
+            }
+          }
+
+          if (lastProcessed) {
+            const { error } = await db
+              .from("tasks")
+              .update({ last_spawn: lastProcessed, updated_at: new Date().toISOString() } as any)
+              .eq("id", template.id);
+            if (error) console.warn("Falha ao atualizar controle de recorrência:", error.message);
+          }
+        }
+
+        if (persisted.length) {
+          setTasks((previous) => {
+            const occurrenceKey = (task: Task) => task.template_id && task.due_date
+              ? `${task.template_id}__${new Date(task.due_date).getTime()}`
+              : `id:${task.id}`;
+            const byOccurrence = new Map(previous.map((task) => [occurrenceKey(task), task]));
+            persisted.forEach((task) => byOccurrence.set(occurrenceKey(task), task));
+            return Array.from(byOccurrence.values());
           });
-        });
-      });
-      if (spawned.length) {
-        setTasks(prev => [...spawned, ...prev]);
-        spawned.forEach(s => pushNotif({ type: "task_created", title: "Tarefa recorrente agendada", body: `${s.title} · ${new Date(s.due_date!).toLocaleString("pt-BR")}`, user_id: s.assignee_id ?? undefined }));
+          persisted.forEach((task) => pushNotif({
+            type: "task_created",
+            title: "Tarefa recorrente agendada",
+            body: `${task.title} · ${new Date(task.due_date!).toLocaleString("pt-BR")}`,
+            user_id: task.assignee_id ?? undefined,
+          }));
+        }
+      } finally {
+        recurrenceScanRunning.current = false;
       }
     }
-    spawnDueOccurrences();
-    const id = window.setInterval(spawnDueOccurrences, 60_000);
+
+    void spawnDueOccurrences();
+    const id = window.setInterval(() => { void spawnDueOccurrences(); }, 60_000);
     return () => window.clearInterval(id);
-  }, [tasks, pushNotif]);
+  }, [currentUser.id, currentUser.role, pushNotif, ready, tasks, user?.id]);
 
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
@@ -977,8 +1057,6 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
     }
   }
 
-  // Marca last_spawn
-  if (out.length) tpl.last_spawn = now.toISOString();
   return out;
 }
 
