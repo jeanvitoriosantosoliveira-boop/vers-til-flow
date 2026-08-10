@@ -41,7 +41,7 @@ export default function Finance() {
   const {
     currentUser, clients, users, expenses, extraServices, financeSettings, cashAdjustments,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
-    updateFinanceSettings, updateUser, addCustomCategory,
+    updateFinanceSettings, setCashValue, updateUser, addCustomCategory,
     addCashAdjustment, deleteCashAdjustment,
   } = useApp();
 
@@ -126,10 +126,13 @@ export default function Finance() {
 
   // Caixa: saldo inicial + ajustes manuais + lucros históricos até hoje
   const cashCurrent = useMemo(() => {
+    if (Number.isFinite(financeSettings.cash_override?.value)) {
+      return financeSettings.cash_override!.value;
+    }
     const past = monthlySeries.filter(m => m.key <= currentMonthKey);
     const adj = cashAdjustments.reduce((s,a) => s + a.amount, 0);
     return financeSettings.opening_balance + adj + past.reduce((s,m) => s + m.profit, 0);
-  }, [monthlySeries, currentMonthKey, financeSettings.opening_balance, cashAdjustments]);
+  }, [monthlySeries, currentMonthKey, financeSettings.cash_override, financeSettings.opening_balance, cashAdjustments]);
 
   // Categorias (mês atual)
   const expensesByCategory = useMemo(() => {
@@ -151,6 +154,7 @@ export default function Finance() {
   });
   const [cashEditOpen, setCashEditOpen] = useState(false);
   const [cashEditValue, setCashEditValue] = useState(0);
+  const [cashSaving, setCashSaving] = useState(false);
 
   function submitExpense() {
     if (!expForm.title?.trim() || !expForm.amount) return;
@@ -163,6 +167,17 @@ export default function Finance() {
     createExtraService(svcForm);
     setSvcOpen(false);
     setSvcForm({ date: new Date().toISOString().slice(0,10), amount: 0 });
+  }
+
+  async function saveCashValue() {
+    if (!Number.isFinite(cashEditValue)) return;
+    setCashSaving(true);
+    try {
+      await setCashValue(cashEditValue);
+      setCashEditOpen(false);
+    } finally {
+      setCashSaving(false);
+    }
   }
 
   function exportReport() {
@@ -620,15 +635,13 @@ export default function Finance() {
           <div className="space-y-3 py-2">
             <Label>Valor exato (R$)</Label>
             <Input type="number" step="0.01" value={cashEditValue} onChange={(e) => setCashEditValue(+e.target.value)} />
-            <p className="text-xs text-muted-foreground">Um ajuste manual será criado para igualar o caixa ao valor informado.</p>
+            <p className="text-xs text-muted-foreground">Este valor será salvo como o caixa atual oficial da empresa.</p>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setCashEditOpen(false)}>Cancelar</Button>
-            <Button onClick={() => {
-              const delta = cashEditValue - cashCurrent;
-              if (delta !== 0) addCashAdjustment({ amount: delta, reason: "Ajuste manual de caixa", date: new Date().toISOString().slice(0,10) });
-              setCashEditOpen(false);
-            }}>Salvar</Button>
+            <Button variant="ghost" onClick={() => setCashEditOpen(false)} disabled={cashSaving}>Cancelar</Button>
+            <Button onClick={saveCashValue} disabled={cashSaving || !Number.isFinite(cashEditValue)}>
+              {cashSaving ? "Salvando..." : "Salvar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

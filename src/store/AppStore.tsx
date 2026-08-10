@@ -51,6 +51,7 @@ interface AppState {
   deleteTeamNote: (id: string) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   updateFinanceSettings: (patch: Partial<FinanceSettings>) => void;
+  setCashValue: (value: number) => Promise<void>;
   addCustomCategory: (label: string) => string;
   createTeam: (t: Partial<Team>) => void;
   updateTeam: (id: string, patch: Partial<Team>) => void;
@@ -779,6 +780,34 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [usingBackend]);
 
+  const setCashValue = useCallback(async (value: number) => {
+    const cashOverride = {
+      value,
+      set_at: new Date().toISOString(),
+    };
+    const { data, error } = await db
+      .from("finance_settings")
+      .upsert({
+        key: "cash_override",
+        value: cashOverride,
+        updated_at: new Date().toISOString(),
+      } as any)
+      .select("key")
+      .maybeSingle();
+
+    if (error || !data) {
+      const persistenceError = error ?? new Error("O Supabase não confirmou a atualização do caixa.");
+      toast.error("Erro ao atualizar caixa: " + persistenceError.message);
+      throw persistenceError;
+    }
+
+    setFinanceSettings((previous) => ({
+      ...previous,
+      cash_override: cashOverride,
+    }));
+    toast.success("Valor do caixa atualizado");
+  }, []);
+
   // ---------- Teams ----------
   const createTeam = useCallback((t: Partial<Team>) => {
     const item: Team = {
@@ -983,7 +1012,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     addComment, logTime, deleteTimeEntry,
     createColumn, renameColumn, deleteColumn,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
-    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings, addCustomCategory,
+    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings, setCashValue, addCustomCategory,
     createTeam, updateTeam, deleteTeam, addUserToTeam, removeUserFromTeam,
     addCashAdjustment, deleteCashAdjustment, visibleTaskIds,
   };
