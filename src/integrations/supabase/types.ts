@@ -1217,6 +1217,13 @@ export type Database = {
       }
       is_commercial: { Args: { _user_id: string }; Returns: boolean }
       is_leader_or_manager: { Args: { _user_id: string }; Returns: boolean }
+      stop_task_recurrence: {
+        Args: {
+          _from_date: string
+          _template_id: string
+        }
+        Returns: string[]
+      }
     }
     Enums: {
       app_role: "leader" | "manager" | "collaborator" | "commercial" | "studio"

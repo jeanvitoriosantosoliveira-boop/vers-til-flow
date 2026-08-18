@@ -33,6 +33,7 @@ interface AppState {
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   moveTask: (id: string, target: { status?: TaskStatus; column_id?: string | null }) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  stopTaskRecurrence: (occurrence: Task) => Promise<void>;
   createClient: (c: Partial<Client>) => Promise<void>;
   updateClient: (id: string, patch: Partial<Client>) => Promise<void>;
   deleteClient: (id: string) => Promise<void>;
@@ -602,6 +603,32 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [tasks]);
 
+  const stopTaskRecurrence = useCallback(async (occurrence: Task) => {
+    if (!occurrence.template_id || !occurrence.due_date) {
+      const invalidOccurrenceError = new Error("Esta tarefa não possui uma recorrência vinculada.");
+      toast.error(invalidOccurrenceError.message);
+      throw invalidOccurrenceError;
+    }
+
+    const { data, error } = await db.rpc("stop_task_recurrence", {
+      _template_id: occurrence.template_id,
+      _from_date: occurrence.due_date,
+    });
+    if (error) {
+      toast.error("Erro ao encerrar recorrência: " + error.message);
+      throw error;
+    }
+
+    const deletedIds = new Set((data ?? []) as string[]);
+    setTasks((previous) => previous
+      .filter((task) => !deletedIds.has(task.id))
+      .map((task) => task.id === occurrence.template_id
+        ? { ...task, recurrence: { ...(task.recurrence ?? {}), mode: "none" }, last_spawn: new Date().toISOString() }
+        : task
+      ));
+    toast.success("Ocorrência excluída e recorrência encerrada");
+  }, []);
+
   const createClient = useCallback(async (data: Partial<Client>) => {
     const c: Client = {
       id: uid(),
@@ -1008,7 +1035,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
     columns, expenses, extraServices, teamNotes, financeSettings, teams, cashAdjustments,
-    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, deleteClient, setClientSatisfaction,
+    createTask, updateTask, moveTask, deleteTask, stopTaskRecurrence, createClient, updateClient, deleteClient, setClientSatisfaction,
     addComment, logTime, deleteTimeEntry,
     createColumn, renameColumn, deleteColumn,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
