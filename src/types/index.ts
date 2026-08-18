@@ -1,4 +1,4 @@
-export type Role = "leader" | "manager" | "collaborator" | "commercial";
+export type Role = "leader" | "manager" | "collaborator" | "commercial" | "studio";
 
 export interface User {
   id: string;
@@ -154,6 +154,10 @@ export interface FinanceSettings {
   opening_balance: number;
   default_tax_rate: number;
   custom_categories?: { key: string; label: string }[];
+  cash_override?: {
+    value: number;
+    set_at: string;
+  };
 }
 
 export interface CashAdjustment {

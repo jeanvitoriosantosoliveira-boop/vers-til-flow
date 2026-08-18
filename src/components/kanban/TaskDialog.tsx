@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useApp } from "@/store/AppStore";
-import type { Task, TaskPriority, TaskStatus, RecurrenceMode } from "@/types";
+import type { Task, TaskPriority, TaskStatus, Recurrence, RecurrenceMode } from "@/types";
 import { Trash2, Send, Plus, Clock, Trash, Repeat, CalendarClock } from "lucide-react";
 import { formatSeconds, formatDate } from "@/lib/format";
 
@@ -19,8 +19,9 @@ interface Props {
 }
 
 export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultColumnId }: Props) {
-  const { tasks, clients, users, comments, timeEntries, currentUser, createTask, updateTask, deleteTask, addComment, logTime, deleteTimeEntry } = useApp();
+  const { tasks, clients, users, comments, timeEntries, currentUser, createTask, updateTask, deleteTask, stopTaskRecurrence, addComment, logTime, deleteTimeEntry } = useApp();
   const editing = tasks.find(t => t.id === taskId);
+  const recurrenceTemplate = editing?.template_id ? tasks.find(task => task.id === editing.template_id) : undefined;
   const [form, setForm] = useState<Partial<Task>>({});
   const [comment, setComment] = useState("");
   const [hoursStr, setHoursStr] = useState("");
@@ -28,6 +29,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
   const [logDesc, setLogDesc] = useState("");
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
+  const [deleteOptionsOpen, setDeleteOptionsOpen] = useState(false);
 
   useEffect(() => {
     if (editing) setForm(editing);
@@ -80,7 +82,32 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
     setHoursStr(""); setMinutesStr(""); setLogDesc("");
   }
 
+  async function removeCurrentOccurrence() {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await deleteTask(editing.id);
+      setDeleteOptionsOpen(false);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeCurrentAndStopRecurrence() {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await stopTaskRecurrence(editing);
+      setDeleteOptionsOpen(false);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -145,6 +172,18 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
               <Label>Prazo</Label>
               <Input type="date" value={form.due_date?.slice(0, 10) ?? ""} onChange={e => setForm({ ...form, due_date: e.target.value || null })} />
             </div>
+            {editing?.template_id ? (
+              <div className="col-span-2 border border-accent/30 rounded-xl p-3 bg-accent/5">
+                <Label className="flex items-center gap-1.5 mb-2">
+                  <Repeat className="w-3.5 h-3.5 text-accent" />
+                  Tarefa recorrente
+                </Label>
+                <p className="text-sm">{recurrenceSummary(recurrenceTemplate?.recurrence)}</p>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  Esta ocorrência segue a configuração do template recorrente.
+                </p>
+              </div>
+            ) : (
             <div className="col-span-2 border border-border rounded-xl p-3 bg-muted/20">
               <Label className="flex items-center gap-1.5 mb-2"><Repeat className="w-3.5 h-3.5 text-accent" /> Recorrência</Label>
               <div className="flex gap-2 mb-3">
@@ -237,6 +276,7 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {editing && (
@@ -316,8 +356,13 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
         </div>
 
         <DialogFooter className="gap-2">
-          {editing && (currentUser.role === "leader" || currentUser.role === "manager" || editing.assignee_id === currentUser.id || editing.created_by === currentUser.id) && (
-            <Button variant="outline" onClick={async () => { setSaving(true); try { await deleteTask(editing.id); onOpenChange(false); } finally { setSaving(false); } }} className="mr-auto gap-2 text-destructive hover:text-destructive" disabled={saving}>
+          {editing && (currentUser.is_manager || editing.assignee_id === currentUser.id || editing.created_by === currentUser.id) && (
+            <Button
+              variant="outline"
+              onClick={() => editing.template_id ? setDeleteOptionsOpen(true) : void removeCurrentOccurrence()}
+              className="mr-auto gap-2 text-destructive hover:text-destructive"
+              disabled={saving}
+            >
               <Trash2 className="w-3 h-3" /> Excluir
             </Button>
           )}
@@ -326,5 +371,44 @@ export function TaskDialog({ open, onOpenChange, taskId, defaultStatus, defaultC
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog open={deleteOptionsOpen} onOpenChange={setDeleteOptionsOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Excluir tarefa recorrente</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2 py-2 text-sm text-muted-foreground">
+          <p>Escolha se deseja remover somente esta ocorrência ou também encerrar as próximas repetições.</p>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="ghost" onClick={() => setDeleteOptionsOpen(false)} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button variant="outline" onClick={removeCurrentOccurrence} disabled={saving}>
+            Excluir apenas esta
+          </Button>
+          <Button variant="destructive" onClick={removeCurrentAndStopRecurrence} disabled={saving}>
+            Excluir esta e não repetir mais
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
+}
+
+function recurrenceSummary(recurrence?: Recurrence) {
+  if (!recurrence || recurrence.mode === "none") return "Configuração recorrente vinculada.";
+
+  const interval = Math.max(1, recurrence.interval ?? 1);
+  const times = recurrence.times?.length ? recurrence.times.join(", ") : "09:00";
+  if (recurrence.mode === "hourly") return `A cada ${interval} hora(s).`;
+  if (recurrence.mode === "daily") return `A cada ${interval} dia(s), às ${times}.`;
+  if (recurrence.mode === "weekly") {
+    const weekDays = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+    const days = (recurrence.days_of_week ?? []).map(day => weekDays[day]).filter(Boolean).join(", ");
+    return `A cada ${interval} semana(s), em ${days || "dias selecionados"}, às ${times}.`;
+  }
+
+  const days = recurrence.days_of_month?.length ? recurrence.days_of_month.join(", ") : "dias selecionados";
+  return `A cada ${interval} mês(es), nos dias ${days}, às ${times}.`;
 }

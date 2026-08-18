@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useApp } from "@/store/AppStore";
 import { PageHeader } from "@/components/PageHeader";
 import { Column } from "@/components/kanban/Column";
@@ -21,15 +21,7 @@ function columnOf(task: Task): string {
 }
 
 export default function Kanban() {
-  const navigate = useNavigate();
   const { tasks, clients, users, currentUser, moveTask, columns, createColumn, renameColumn, deleteColumn } = useApp();
-  
-  // Commercial users should not see task kanban - redirect to sales dashboard
-  if (currentUser.role === "commercial") {
-    navigate("/sales/dashboard");
-    return null;
-  }
-  
   const { query, setQuery } = useSearch();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -92,18 +84,20 @@ export default function Kanban() {
 
   function onDragEnd(e: DragEndEvent) {
     const id = String(e.active.id);
-    const targetId = e.over?.id ? String(e.over.id) : undefined;
-    if (!targetId) return;
+    const overId = e.over?.id ? String(e.over.id) : undefined;
+    if (!overId?.startsWith("column:")) return;
+    const targetId = overId.slice("column:".length);
     const t = tasks.find(x => x.id === id);
     if (!t) return;
     const targetCol = columns.find(c => c.id === targetId);
     if (!targetCol) return;
+    if (columnOf(t) === targetCol.id) return;
     if (targetCol.base) {
       // Coluna base: atualiza status e limpa column_id
-      moveTask(id, { status: targetCol.base as TaskStatus, column_id: null });
+      void moveTask(id, { status: targetCol.base as TaskStatus, column_id: null }).catch(() => undefined);
     } else {
       // Coluna customizada: mantém o status atual, só muda column_id
-      moveTask(id, { column_id: targetCol.id, status: t.status });
+      void moveTask(id, { column_id: targetCol.id, status: t.status }).catch(() => undefined);
     }
   }
 
@@ -120,6 +114,11 @@ export default function Kanban() {
     createColumn(newColTitle.trim());
     setNewColTitle("");
     setNewColOpen(false);
+  }
+
+  // Usuários comerciais não acessam o Kanban de tarefas.
+  if (currentUser.role === "commercial") {
+    return <Navigate to="/sales/dashboard" replace />;
   }
 
   return (

@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function Column({ column, tasks, onTaskClick, onAdd, canManage, onRename, onDelete }: Props) {
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const { setNodeRef, isOver } = useDroppable({ id: `column:${column.id}` });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(column.title);
 
@@ -28,7 +28,12 @@ export function Column({ column, tasks, onTaskClick, onAdd, canManage, onRename,
   }
 
   return (
-    <div className="flex flex-col bg-muted/70 dark:bg-muted/40 border border-border/60 rounded-xl p-3 min-w-[280px] w-[280px] shrink-0 shadow-sm">
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col bg-muted/70 dark:bg-muted/40 border border-border/60 rounded-xl p-3 min-w-[280px] w-[280px] shrink-0 shadow-sm transition-colors ${
+        isOver ? "bg-accent/10 ring-2 ring-accent/40" : ""
+      }`}
+    >
       <div className="flex items-center justify-between px-1.5 mb-3">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className={`w-2 h-2 rounded-full shrink-0 ${column.accent}`} />
@@ -72,8 +77,7 @@ export function Column({ column, tasks, onTaskClick, onAdd, canManage, onRename,
         </div>
       </div>
       <div
-        ref={setNodeRef}
-        className={`space-y-2 min-h-[120px] flex-1 rounded-lg transition-colors ${isOver ? "bg-accent/10 ring-2 ring-accent/40" : ""}`}
+        className="space-y-2 min-h-[120px] flex-1 rounded-lg"
       >
         {tasks.map(t => <TaskCard key={t.id} task={t} onClick={() => onTaskClick(t.id)} />)}
       </div>

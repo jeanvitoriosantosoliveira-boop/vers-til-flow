@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase as _supabase } from "@/integrations/supabase/client";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { mockUsers, mockExpenses, mockExtraServices, mockTeams } from "@/data/mock";
@@ -33,6 +33,7 @@ interface AppState {
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   moveTask: (id: string, target: { status?: TaskStatus; column_id?: string | null }) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  stopTaskRecurrence: (occurrence: Task) => Promise<void>;
   createClient: (c: Partial<Client>) => Promise<void>;
   updateClient: (id: string, patch: Partial<Client>) => Promise<void>;
   deleteClient: (id: string) => Promise<void>;
@@ -51,6 +52,7 @@ interface AppState {
   deleteTeamNote: (id: string) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   updateFinanceSettings: (patch: Partial<FinanceSettings>) => void;
+  setCashValue: (value: number) => Promise<void>;
   addCustomCategory: (label: string) => string;
   createTeam: (t: Partial<Team>) => void;
   updateTeam: (id: string, patch: Partial<Team>) => void;
@@ -97,7 +99,7 @@ function saveLS<T>(key: string, value: T) {
 }
 
 function mapRole(role?: string | null): Role {
-  if (role === "leader" || role === "manager" || role === "commercial") return role;
+  if (role === "leader" || role === "manager" || role === "commercial" || role === "studio") return role;
   return "collaborator";
 }
 
@@ -109,6 +111,8 @@ function mapUser(profile: any, roles: any[], members: any[]): User {
     ? "manager"
     : roleList.includes("commercial")
     ? "commercial"
+    : roleList.includes("studio")
+    ? "studio"
     : "collaborator";
   const memberships = members.filter((m) => m.user_id === profile.id);
   const teamIds = memberships.map((m) => m.team_id);
@@ -301,6 +305,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [usingBackend, setUsingBackend] = useState(false);
   const [ready, setReady] = useState(false);
+  const recurrenceScanRunning = useRef(false);
 
   // Limpa LS antigo de tasks/clients quando Supabase está configurado
   useEffect(() => {
@@ -475,6 +480,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       total_seconds: 0,
       column_id: data.column_id ?? null,
       recurrence: data.recurrence ?? { mode: "none" },
+      is_template: data.is_template ?? false,
+      template_id: data.template_id ?? null,
+      last_spawn: data.last_spawn ?? null,
     };
     const { data: inserted, error } = await db.from("tasks").insert(taskToDb(newTask)).select().single();
     if (error) {
@@ -493,44 +501,56 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [users, notifyUser, currentUser]);
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
-    let prevTask: Task | undefined;
+    const previous = tasks.find((task) => task.id === id);
+    if (!previous) {
+      const notFoundError = new Error("A tarefa não foi encontrada.");
+      toast.error(notFoundError.message);
+      throw notFoundError;
+    }
     const updatedAt = new Date().toISOString();
-    setTasks((prev) => prev.map((t) => {
-      if (t.id === id) { prevTask = t; return { ...t, ...patch, updated_at: updatedAt }; }
-      return t;
-    }));
+    setTasks((prev) => prev.map((task) =>
+      task.id === id ? { ...task, ...patch, updated_at: updatedAt } : task
+    ));
     const { data: savedTask, error } = await db
       .from("tasks")
       .update(taskToDb({ ...patch, updated_at: updatedAt }))
       .eq("id", id)
       .select()
       .maybeSingle();
-    if (error) {
-      if (prevTask) setTasks((prev) => prev.map((t) => t.id === id ? prevTask! : t));
-      toast.error("Erro ao atualizar tarefa: " + error.message);
-      throw error;
+    if (error || !savedTask) {
+      setTasks((prev) => prev.map((task) => task.id === id ? previous : task));
+      const persistenceError = error ?? new Error("A tarefa não foi encontrada ou você não tem permissão para alterá-la.");
+      toast.error("Erro ao atualizar tarefa: " + persistenceError.message);
+      throw persistenceError;
     }
-    if (savedTask) setTasks((prev) => prev.map((t) => t.id === id ? mapTask(savedTask) : t));
-    if (prevTask) {
-      const isStatus = patch.status && patch.status !== prevTask.status;
+    setTasks((prev) => prev.map((t) => t.id === id ? mapTask(savedTask) : t));
+    if (previous) {
+      const isStatus = patch.status && patch.status !== previous.status;
       void notifyUser({
         type: patch.status === "done" ? "task_done" : "task_updated",
         title: patch.status === "done" ? "Tarefa concluída" : "Tarefa atualizada",
-        body: `${prevTask.title}${isStatus ? ` → ${labelStatus(patch.status!)}` : ""}`,
-        user_id: prevTask.assignee_id ?? undefined,
+        body: `${previous.title}${isStatus ? ` → ${labelStatus(patch.status!)}` : ""}`,
+        user_id: previous.assignee_id ?? undefined,
       });
       // ----- Recorrência: ao concluir uma tarefa recorrente, agenda a próxima -----
-      if (patch.status === "done" && prevTask.status !== "done" && prevTask.recurrence && prevTask.recurrence.mode !== "none") {
-        const r = prevTask.recurrence;
+      if (
+        patch.status === "done"
+        && previous.status !== "done"
+        && !previous.is_template
+        && !previous.template_id
+        && previous.recurrence
+        && previous.recurrence.mode !== "none"
+      ) {
+        const r = previous.recurrence;
         const interval = r.interval ?? 1;
-        const base = prevTask.due_date ? new Date(prevTask.due_date) : new Date();
+        const base = previous.due_date ? new Date(previous.due_date) : new Date();
         const next = new Date(base);
         if (r.mode === "hourly")  next.setHours(next.getHours() + interval);
         if (r.mode === "daily")   next.setDate(next.getDate() + interval);
         if (r.mode === "weekly")  next.setDate(next.getDate() + 7 * interval);
         if (r.mode === "monthly") next.setMonth(next.getMonth() + interval);
         const nt: Task = {
-          ...prevTask,
+          ...previous,
           id: uid(),
           status: "todo",
           column_id: null,
@@ -538,18 +558,27 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           due_date: next.toISOString(),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          recurrence: prevTask.recurrence,
+          recurrence: previous.recurrence,
         };
-        setTasks(prev => [nt, ...prev]);
-        void notifyUser({
-          type: "task_created",
-          title: "Próxima ocorrência agendada",
-          body: `${nt.title} → ${next.toLocaleDateString("pt-BR")}`,
-          user_id: nt.assignee_id ?? undefined,
-        });
+        const { data: inserted, error } = await db
+          .from("tasks")
+          .insert(taskToDb(nt))
+          .select()
+          .maybeSingle();
+        if (error || !inserted) {
+          toast.error("Erro ao agendar próxima ocorrência: " + (error?.message ?? "registro não confirmado"));
+        } else {
+          setTasks((current) => [mapTask(inserted), ...current.filter((task) => task.id !== inserted.id)]);
+          void notifyUser({
+            type: "task_created",
+            title: "Próxima ocorrência agendada",
+            body: `${nt.title} → ${next.toLocaleDateString("pt-BR")}`,
+            user_id: nt.assignee_id ?? undefined,
+          });
+        }
       }
     }
-  }, [notifyUser]);
+  }, [notifyUser, tasks]);
 
   const moveTask = useCallback(
     (id: string, target: { status?: TaskStatus; column_id?: string | null }) =>
@@ -560,13 +589,45 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const deleteTask = useCallback(async (id: string) => {
     const previous = tasks.find((t) => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    const { error } = await db.from("tasks").delete().eq("id", id);
-    if (error) {
+    const { data: deletedTask, error } = await db
+      .from("tasks")
+      .delete()
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
+    if (error || !deletedTask) {
       if (previous) setTasks((prev) => [previous, ...prev]);
-      toast.error("Erro ao excluir tarefa: " + error.message);
-      throw error;
+      const persistenceError = error ?? new Error("A tarefa não foi encontrada ou você não tem permissão para excluí-la.");
+      toast.error("Erro ao excluir tarefa: " + persistenceError.message);
+      throw persistenceError;
     }
   }, [tasks]);
+
+  const stopTaskRecurrence = useCallback(async (occurrence: Task) => {
+    if (!occurrence.template_id || !occurrence.due_date) {
+      const invalidOccurrenceError = new Error("Esta tarefa não possui uma recorrência vinculada.");
+      toast.error(invalidOccurrenceError.message);
+      throw invalidOccurrenceError;
+    }
+
+    const { data, error } = await db.rpc("stop_task_recurrence", {
+      _template_id: occurrence.template_id,
+      _from_date: occurrence.due_date,
+    });
+    if (error) {
+      toast.error("Erro ao encerrar recorrência: " + error.message);
+      throw error;
+    }
+
+    const deletedIds = new Set((data ?? []) as string[]);
+    setTasks((previous) => previous
+      .filter((task) => !deletedIds.has(task.id))
+      .map((task) => task.id === occurrence.template_id
+        ? { ...task, recurrence: { ...(task.recurrence ?? {}), mode: "none" }, last_spawn: new Date().toISOString() }
+        : task
+      ));
+    toast.success("Ocorrência excluída e recorrência encerrada");
+  }, []);
 
   const createClient = useCallback(async (data: Partial<Client>) => {
     const c: Client = {
@@ -746,6 +807,34 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [usingBackend]);
 
+  const setCashValue = useCallback(async (value: number) => {
+    const cashOverride = {
+      value,
+      set_at: new Date().toISOString(),
+    };
+    const { data, error } = await db
+      .from("finance_settings")
+      .upsert({
+        key: "cash_override",
+        value: cashOverride,
+        updated_at: new Date().toISOString(),
+      } as any)
+      .select("key")
+      .maybeSingle();
+
+    if (error || !data) {
+      const persistenceError = error ?? new Error("O Supabase não confirmou a atualização do caixa.");
+      toast.error("Erro ao atualizar caixa: " + persistenceError.message);
+      throw persistenceError;
+    }
+
+    setFinanceSettings((previous) => ({
+      ...previous,
+      cash_override: cashOverride,
+    }));
+    toast.success("Valor do caixa atualizado");
+  }, []);
+
   // ---------- Teams ----------
   const createTeam = useCallback((t: Partial<Team>) => {
     const item: Team = {
@@ -848,49 +937,109 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   // ---------- Scheduler de recorrência ----------
   useEffect(() => {
-    function spawnDueOccurrences() {
-      const now = new Date();
-      let spawned: Task[] = [];
-      tasks.filter(t => t.is_template && t.recurrence && t.recurrence.mode !== "none").forEach(tpl => {
-        const occ = computeNextOccurrences(tpl, now);
-        occ.forEach(date => {
-          const sig = `${tpl.id}__${date.toISOString()}`;
-          // evita duplicar instâncias já criadas
-          const exists = tasks.some(x => x.template_id === tpl.id && x.due_date && Math.abs(new Date(x.due_date).getTime() - date.getTime()) < 60_000);
-          if (exists) return;
-          spawned.push({
-            ...tpl,
-            id: uid(),
-            is_template: false,
-            template_id: tpl.id,
-            status: "todo",
-            column_id: null,
-            total_seconds: 0,
-            due_date: date.toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            last_spawn: null,
+    if (!ready || !user?.id) return;
+
+    async function spawnDueOccurrences() {
+      if (recurrenceScanRunning.current) return;
+      recurrenceScanRunning.current = true;
+
+      try {
+        const now = new Date();
+        const persisted: Task[] = [];
+        const templates = tasks.filter(
+          (task) => task.is_template && task.recurrence && task.recurrence.mode !== "none"
+        );
+
+        for (const template of templates) {
+          const canPersist = currentUser.role === "leader"
+            || currentUser.role === "manager"
+            || template.created_by === currentUser.id
+            || template.assignee_id === currentUser.id;
+          if (!canPersist) continue;
+
+          const occurrences = computeNextOccurrences(template, now);
+          let lastProcessed: string | null = null;
+
+          for (const date of occurrences) {
+            const dueDate = date.toISOString();
+            const occurrence: Task = {
+              ...template,
+              id: uid(),
+              is_template: false,
+              template_id: template.id,
+              status: "todo",
+              column_id: null,
+              total_seconds: 0,
+              due_date: dueDate,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              recurrence: { mode: "none" },
+              last_spawn: null,
+            };
+            const { data: inserted, error } = await db
+              .from("tasks")
+              .insert(taskToDb(occurrence))
+              .select()
+              .maybeSingle();
+
+            if (error) {
+              if (error.code === "23505") {
+                lastProcessed = dueDate;
+                continue;
+              }
+              console.warn("Falha ao persistir ocorrência recorrente:", error.message);
+              break;
+            }
+
+            if (inserted) {
+              persisted.push(mapTask(inserted));
+              lastProcessed = dueDate;
+            }
+          }
+
+          if (lastProcessed) {
+            const { error } = await db
+              .from("tasks")
+              .update({ last_spawn: lastProcessed, updated_at: new Date().toISOString() } as any)
+              .eq("id", template.id);
+            if (error) console.warn("Falha ao atualizar controle de recorrência:", error.message);
+          }
+        }
+
+        if (persisted.length) {
+          setTasks((previous) => {
+            const occurrenceKey = (task: Task) => task.template_id && task.due_date
+              ? `${task.template_id}__${new Date(task.due_date).getTime()}`
+              : `id:${task.id}`;
+            const byOccurrence = new Map(previous.map((task) => [occurrenceKey(task), task]));
+            persisted.forEach((task) => byOccurrence.set(occurrenceKey(task), task));
+            return Array.from(byOccurrence.values());
           });
-        });
-      });
-      if (spawned.length) {
-        setTasks(prev => [...spawned, ...prev]);
-        spawned.forEach(s => pushNotif({ type: "task_created", title: "Tarefa recorrente agendada", body: `${s.title} · ${new Date(s.due_date!).toLocaleString("pt-BR")}`, user_id: s.assignee_id ?? undefined }));
+          persisted.forEach((task) => pushNotif({
+            type: "task_created",
+            title: "Tarefa recorrente agendada",
+            body: `${task.title} · ${new Date(task.due_date!).toLocaleString("pt-BR")}`,
+            user_id: task.assignee_id ?? undefined,
+          }));
+        }
+      } finally {
+        recurrenceScanRunning.current = false;
       }
     }
-    spawnDueOccurrences();
-    const id = window.setInterval(spawnDueOccurrences, 60_000);
+
+    void spawnDueOccurrences();
+    const id = window.setInterval(() => { void spawnDueOccurrences(); }, 60_000);
     return () => window.clearInterval(id);
-  }, [tasks, pushNotif]);
+  }, [currentUser.id, currentUser.role, pushNotif, ready, tasks, user?.id]);
 
   const value: AppState = {
     ready, usingBackend, currentUser, users, clients, tasks, comments, timeEntries,
     columns, expenses, extraServices, teamNotes, financeSettings, teams, cashAdjustments,
-    createTask, updateTask, moveTask, deleteTask, createClient, updateClient, deleteClient, setClientSatisfaction,
+    createTask, updateTask, moveTask, deleteTask, stopTaskRecurrence, createClient, updateClient, deleteClient, setClientSatisfaction,
     addComment, logTime, deleteTimeEntry,
     createColumn, renameColumn, deleteColumn,
     createExpense, deleteExpense, createExtraService, deleteExtraService,
-    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings, addCustomCategory,
+    addTeamNote, deleteTeamNote, updateUser, updateFinanceSettings, setCashValue, addCustomCategory,
     createTeam, updateTeam, deleteTeam, addUserToTeam, removeUserFromTeam,
     addCashAdjustment, deleteCashAdjustment, visibleTaskIds,
   };
@@ -916,6 +1065,16 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
 
   // Janela: do horário do template até "agora" (gera tudo que já deveria ter sido criado)
   const start = tpl.last_spawn ? new Date(tpl.last_spawn) : (tpl.due_date ? new Date(tpl.due_date) : new Date(tpl.created_at));
+  const includePassedTimesFromCreationDay = !tpl.last_spawn && !tpl.due_date;
+  const creationDay = new Date(tpl.created_at);
+  const shouldCreateOccurrence = (occurrence: Date) => {
+    if (occurrence > now) return false;
+    if (occurrence > start) return true;
+    return includePassedTimesFromCreationDay
+      && occurrence.getFullYear() === creationDay.getFullYear()
+      && occurrence.getMonth() === creationDay.getMonth()
+      && occurrence.getDate() === creationDay.getDate();
+  };
   // Limite: no máx 31 dias à frente OU 50 ocorrências por scan
   const horizon = new Date(now.getTime() + 31 * 86400000);
   const limit = endDate && endDate < horizon ? endDate : horizon;
@@ -931,7 +1090,7 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
     while (cursor <= limit && out.length < 50) {
       times.forEach(t => {
         const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
-        if (occ > start && occ <= now) out.push(occ);
+        if (shouldCreateOccurrence(occ)) out.push(occ);
       });
       cursor.setDate(cursor.getDate() + interval);
     }
@@ -942,7 +1101,7 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
       if (days.includes(cursor.getDay())) {
         times.forEach(t => {
           const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
-          if (occ > start && occ <= now) out.push(occ);
+          if (shouldCreateOccurrence(occ)) out.push(occ);
         });
       }
       cursor.setDate(cursor.getDate() + 1);
@@ -957,15 +1116,13 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
       days.forEach(dom => {
         times.forEach(t => {
           const occ = new Date(cursor.getFullYear(), cursor.getMonth(), dom, t.hh, t.mm);
-          if (occ > start && occ <= now) out.push(occ);
+          if (shouldCreateOccurrence(occ)) out.push(occ);
         });
       });
       cursor.setMonth(cursor.getMonth() + interval);
     }
   }
 
-  // Marca last_spawn
-  if (out.length) tpl.last_spawn = now.toISOString();
   return out;
 }
 

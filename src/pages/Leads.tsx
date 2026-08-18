@@ -10,16 +10,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Edit2, Phone, Mail, Building, Target, DollarSign } from "lucide-react";
+import { Plus, Trash2, Edit2, Phone, Instagram, Building, Target, DollarSign, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDate } from "@/lib/format";
+
+function errorMessage(err: unknown) {
+  return err instanceof Error ? err.message : "Erro inesperado";
+}
 
 interface Lead {
   id: string;
   name: string;
   company?: string;
   email?: string;
+  instagram?: string;
   phone?: string;
   whatsapp?: string;
   source?: string;
@@ -54,7 +59,7 @@ export default function Leads() {
   const [form, setForm] = useState<Partial<Lead>>({
     name: "",
     company: "",
-    email: "",
+    instagram: "",
     phone: "",
     whatsapp: "",
     source: "",
@@ -84,9 +89,9 @@ export default function Leads() {
       
       const { data, error } = await query;
       if (error) throw error;
-      setLeads(data || []);
-    } catch (err: any) {
-      toast.error(err.message);
+      setLeads((data || []) as Lead[]);
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -100,8 +105,8 @@ export default function Leads() {
       if (data?.length && !form.stage_id) {
         setForm(f => ({ ...f, stage_id: data[0].id }));
       }
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   }
 
@@ -109,17 +114,50 @@ export default function Leads() {
     leads.filter(l => 
       (l.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (l.company?.toLowerCase().includes(search.toLowerCase())) ||
-      (l.email?.toLowerCase().includes(search.toLowerCase()))
+      (l.instagram?.toLowerCase().includes(search.toLowerCase())) ||
+      (l.phone?.toLowerCase().includes(search.toLowerCase())) ||
+      (l.whatsapp?.toLowerCase().includes(search.toLowerCase()))
     ),
     [leads, search]
   );
+
+  const possibleDuplicates = useMemo(() => {
+    const terms = [
+      form.name,
+      form.company,
+      form.instagram,
+      form.phone,
+      form.whatsapp,
+    ]
+      .map((value) => value?.trim().toLowerCase())
+      .filter((value): value is string => !!value && value.length >= 3);
+
+    if (!terms.length) return [];
+
+    return leads
+      .filter((lead) => lead.id !== editingId)
+      .filter((lead) => {
+        const values = [
+          lead.name,
+          lead.company,
+          lead.instagram,
+          lead.phone,
+          lead.whatsapp,
+        ]
+          .map((value) => value?.trim().toLowerCase() ?? "")
+          .filter((value) => value.length >= 3);
+
+        return terms.some((term) => values.some((value) => value.includes(term) || term.includes(value)));
+      })
+      .slice(0, 5);
+  }, [editingId, form.company, form.instagram, form.name, form.phone, form.whatsapp, leads]);
 
   function openCreate() {
     setEditingId(null);
     setForm({
       name: "",
       company: "",
-      email: "",
+      instagram: "",
       phone: "",
       whatsapp: "",
       source: "",
@@ -144,9 +182,9 @@ export default function Leads() {
 
     try {
       const payload = {
-        name: form.name?.trim() || form.company?.trim() || form.email?.trim() || "Lead sem nome",
+        name: form.name?.trim() || form.company?.trim() || form.instagram?.trim() || "Lead sem nome",
         company: form.company?.trim() || null,
-        email: form.email?.trim() || null,
+        instagram: form.instagram?.trim() || null,
         phone: form.phone?.trim() || null,
         whatsapp: form.whatsapp?.trim() || null,
         source: form.source?.trim() || null,
@@ -169,8 +207,8 @@ export default function Leads() {
       
       setIsOpen(false);
       loadLeads();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   }
 
@@ -181,8 +219,8 @@ export default function Leads() {
       if (error) throw error;
       toast.success("Lead excluído");
       loadLeads();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err: unknown) {
+      toast.error(errorMessage(err));
     }
   }
 
@@ -210,7 +248,7 @@ export default function Leads() {
 
       <Card className="p-4 mb-6">
         <Input
-          placeholder="Buscar por nome, empresa ou email…"
+          placeholder="Buscar por nome, empresa, Instagram ou telefone…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
@@ -233,7 +271,7 @@ export default function Leads() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-lg">{lead.name || lead.company || lead.email || "Lead sem nome"}</h3>
+                      <h3 className="font-semibold text-lg">{lead.name || lead.company || lead.instagram || "Lead sem nome"}</h3>
                       <Badge style={{ backgroundColor: getStageColor(lead.stage_id), color: "white" }}>
                         {getStageName(lead.stage_id)}
                       </Badge>
@@ -245,9 +283,9 @@ export default function Leads() {
                           <Building className="w-3.5 h-3.5" /> {lead.company}
                         </div>
                       )}
-                      {lead.email && (
+                      {lead.instagram && (
                         <div className="flex items-center gap-1">
-                          <Mail className="w-3.5 h-3.5" /> {lead.email}
+                          <Instagram className="w-3.5 h-3.5" /> {lead.instagram}
                         </div>
                       )}
                       {lead.phone && (
@@ -343,14 +381,37 @@ export default function Leads() {
             </div>
 
             <div>
-              <Label>Email</Label>
+              <Label>Instagram</Label>
               <Input
-                type="email"
-                value={form.email || ""}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="contato@empresa.com"
+                value={form.instagram || ""}
+                onChange={(e) => setForm({ ...form, instagram: e.target.value })}
+                placeholder="@perfil ou link"
               />
             </div>
+
+            {possibleDuplicates.length > 0 && (
+              <Card className="p-3 border-warning/50 bg-warning/10">
+                <div className="flex items-center gap-2 text-xs font-semibold text-warning mb-2">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Possíveis leads já cadastrados
+                </div>
+                <div className="space-y-2">
+                  {possibleDuplicates.map((lead) => (
+                    <button
+                      key={lead.id}
+                      type="button"
+                      onClick={() => openEdit(lead)}
+                      className="w-full text-left rounded-md border border-border/60 bg-background/50 px-3 py-2 hover:bg-muted transition"
+                    >
+                      <p className="text-sm font-medium">{lead.name || lead.company || lead.instagram || "Lead sem nome"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[lead.company, lead.instagram, lead.phone || lead.whatsapp].filter(Boolean).join(" · ")}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
