@@ -1038,6 +1038,16 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
 
   // Janela: do horário do template até "agora" (gera tudo que já deveria ter sido criado)
   const start = tpl.last_spawn ? new Date(tpl.last_spawn) : (tpl.due_date ? new Date(tpl.due_date) : new Date(tpl.created_at));
+  const includePassedTimesFromCreationDay = !tpl.last_spawn && !tpl.due_date;
+  const creationDay = new Date(tpl.created_at);
+  const shouldCreateOccurrence = (occurrence: Date) => {
+    if (occurrence > now) return false;
+    if (occurrence > start) return true;
+    return includePassedTimesFromCreationDay
+      && occurrence.getFullYear() === creationDay.getFullYear()
+      && occurrence.getMonth() === creationDay.getMonth()
+      && occurrence.getDate() === creationDay.getDate();
+  };
   // Limite: no máx 31 dias à frente OU 50 ocorrências por scan
   const horizon = new Date(now.getTime() + 31 * 86400000);
   const limit = endDate && endDate < horizon ? endDate : horizon;
@@ -1053,7 +1063,7 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
     while (cursor <= limit && out.length < 50) {
       times.forEach(t => {
         const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
-        if (occ > start && occ <= now) out.push(occ);
+        if (shouldCreateOccurrence(occ)) out.push(occ);
       });
       cursor.setDate(cursor.getDate() + interval);
     }
@@ -1064,7 +1074,7 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
       if (days.includes(cursor.getDay())) {
         times.forEach(t => {
           const occ = new Date(cursor); occ.setHours(t.hh, t.mm, 0, 0);
-          if (occ > start && occ <= now) out.push(occ);
+          if (shouldCreateOccurrence(occ)) out.push(occ);
         });
       }
       cursor.setDate(cursor.getDate() + 1);
@@ -1079,7 +1089,7 @@ function computeNextOccurrences(tpl: Task, now: Date): Date[] {
       days.forEach(dom => {
         times.forEach(t => {
           const occ = new Date(cursor.getFullYear(), cursor.getMonth(), dom, t.hh, t.mm);
-          if (occ > start && occ <= now) out.push(occ);
+          if (shouldCreateOccurrence(occ)) out.push(occ);
         });
       });
       cursor.setMonth(cursor.getMonth() + interval);
